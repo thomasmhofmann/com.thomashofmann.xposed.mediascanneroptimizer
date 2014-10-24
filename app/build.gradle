@@ -1,0 +1,64 @@
+import java.text.SimpleDateFormat
+
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 19
+    buildToolsVersion '19.1.0'
+
+    defaultConfig {
+        applicationId "com.thomashofmann.xposed.samsungkitkatsystemservercrashfix"
+        minSdkVersion 19
+        targetSdkVersion 20
+        versionCode 1
+        versionName "1.0"
+    }
+
+    signingConfigs {
+        release {
+            storeFile file("keystore.jks")
+            storePassword "xposed"
+            keyAlias "xposed"
+            keyPassword "xposed"
+        }
+    }
+
+    buildTypes {
+        release {
+            project.ext.set("archivesBaseName", "mso");
+            def dateFormat = new SimpleDateFormat('yyyy-MM-d--HH-mm-ss-SSSZ')
+            def dateString = dateFormat.format(new java.util.Date())
+            signingConfig signingConfigs.release
+            applicationVariants.all { variant ->
+                def file = variant.outputFile
+                def nameWithVersion = file.name.replace('.apk', '-' + defaultConfig.versionName + '-' + dateString + '.apk')
+                variant.outputFile = new File(file.parent, nameWithVersion)
+            }
+            runProguard false
+            //proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+    sourceSets {
+        main {
+            manifest.srcFile 'src/main/AndroidManifest.xml'
+        }
+    }
+}
+
+dependencies {
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+    //compile fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
+    //compile(name:'libXposedModule', ext:'aar')
+    compile 'xposed:xposed.lib:1.0.0-SNAPSHOT@aar'
+    provided fileTree(dir: 'lib-xposed', include: ['*.jar'])
+}
+
+task deployApks(type: Copy) {
+    from 'build/outputs/apk', 'build/proguard/release'
+    include '**/*.apk', '**/*.txt'
+    exclude '**/*-unaligned.apk'
+    into 'X:\\Google Drive\\encrypted\\builds'
+}
+
+assembleRelease.finalizedBy deployApks
+

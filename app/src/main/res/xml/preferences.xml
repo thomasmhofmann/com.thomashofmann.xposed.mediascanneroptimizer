@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" >
+
+    <SwitchPreference
+        android:defaultValue="true"
+        android:key="pref_prevent_repetetive_scans_state"
+        android:persistent="true"
+        android:summaryOff="@string/pref_prevent_repetetive_scans_disable_summary"
+        android:summaryOn="@string/pref_prevent_repetetive_scans_enabled_summary"
+        android:title="@string/pref_prevent_repetetive_scans_state_title" />
+    <SwitchPreference
+        android:defaultValue="true"
+        android:key="pref_run_media_scanner_as_foreground_service_state"
+        android:persistent="true"
+        android:summaryOff="@string/pref_run_media_scanner_as_foreground_service_disable_summary"
+        android:summaryOn="@string/pref_run_media_scanner_as_foreground_service_enabled_summary"
+        android:title="@string/pref_run_media_scanner_as_foreground_service_state_title" />
+    <SwitchPreference
+        android:defaultValue="true"
+        android:key="pref_run_media_scanner_with_background_thread_priority_state"
+        android:persistent="true"
+        android:summaryOff="@string/pref_run_media_scanner_with_background_thread_priority_disable_summary"
+        android:summaryOn="@string/pref_run_media_scanner_with_background_thread_priority_enabled_summary"
+        android:title="@string/pref_run_media_scanner_with_background_thread_priority_title" />
+    <SwitchPreference
+        android:defaultValue="false"
+        android:key="pref_restrict_directories_to_scan_state"
+        android:persistent="true"
+        android:summaryOff="@string/pref_restrict_directories_to_scan_disable_summary"
+        android:summaryOn="@string/pref_restrict_directories_to_scan_enabled_summary"
+        android:title="@string/pref_restrict_directories_to_scan_title" />
+    <SwitchPreference
+        android:defaultValue="false"
+        android:key="pref_restrict_to_certain_media_types_state"
+        android:persistent="true"
+        android:summaryOff="@string/pref_restrict_to_certain_media_types_disable_summary"
+        android:summaryOn="@string/pref_restrict_to_certain_media_types_enabled_summary"
+        android:title="@string/pref_restrict_to_certain_media_types_title" />
+    <SwitchPreference
+        android:defaultValue="true"
+        android:key="pref_show_results_state"
+        android:persistent="true"
+        android:summaryOff="@string/pref_show_results_disable_summary"
+        android:summaryOn="@string/pref_show_results_enabled_summary"
+        android:title="@string/pref_show_results_title" />
+    
+    <Preference
+        android:key="pref_trigger_media_scan"
+        android:summary="@string/pref_trigger_media_scan_summary"
+        android:title="@string/pref_trigger_media_scan_title" />
+    
+    <Preference
+        android:key="pref_delete_media_store"
+        android:summary="@string/pref_delete_media_store_summary"
+        android:title="@string/pref_delete_media_store_title" />
+    
+
+</PreferenceScreen>

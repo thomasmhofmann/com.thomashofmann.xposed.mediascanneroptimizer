@@ -1,0 +1,36 @@
+<resources>
+
+    <string name="app_name">Media Scanner Optimizer</string>
+	<string name="launcher_name">Media Scanner Settings</string>
+	
+    <string name="pref_prevent_repetetive_scans_state_title">Repetetive Scans</string>
+    <string name="pref_prevent_repetetive_scans_enabled_summary">Prevent repetetive scans (suggested)</string>
+    <string name="pref_prevent_repetetive_scans_disable_summary">Allow repetetive scans</string>
+    
+    <string name="pref_run_media_scanner_as_foreground_service_state_title">Service Importance</string>
+    <string name="pref_run_media_scanner_as_foreground_service_enabled_summary">Run as foreground service (suggested)</string>
+    <string name="pref_run_media_scanner_as_foreground_service_disable_summary">Run as background service</string>
+    
+    <string name="pref_run_media_scanner_with_background_thread_priority_title">Thread Priority</string>
+    <string name="pref_run_media_scanner_with_background_thread_priority_enabled_summary">Run with normal priority (suggested)</string>
+    <string name="pref_run_media_scanner_with_background_thread_priority_disable_summary">Run with reduced priority</string>
+    
+    <string name="pref_restrict_directories_to_scan_title">Directories</string>
+    <string name="pref_restrict_directories_to_scan_enabled_summary">Restrict scan to specific directories</string>
+    <string name="pref_restrict_directories_to_scan_disable_summary">Scan all directories</string>
+    
+    <string name="pref_restrict_to_certain_media_types_title">Media Types</string>
+    <string name="pref_restrict_to_certain_media_types_disable_summary">Scan all media types</string>
+    <string name="pref_restrict_to_certain_media_types_enabled_summary">Restrict scanned media types in certain directories</string>
+    
+    <string name="pref_show_results_title">Show Results</string>
+    <string name="pref_show_results_enabled_summary">Show results as notifications</string>
+    <string name="pref_show_results_disable_summary">Do not show any results</string>
+    
+    <string name="pref_trigger_media_scan_title">Trigger MediaScanner</string>
+    <string name="pref_trigger_media_scan_summary">Tap to trigger a Media Scan right now</string>
+   
+    <string name="pref_delete_media_store_title">Rebuild Media Store</string>
+    <string name="pref_delete_media_store_summary">Tap to delete existing entries in the media store for the external volume and trigger a rescan (improves scan times when scans are restricted to certain directories). Will not work in case a scan is currently in progress.</string>
+    
+</resources>
