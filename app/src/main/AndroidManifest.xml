@@ -24,5 +24,12 @@
         </activity>
     </application>
 
+    <permission android:name="com.thomashofmann.xposed.mediascanneroptimizer.permission.MEDIA_STORE_OPERATIONS"
+        android:label="@string/perm_label_media_store_operations"
+        android:description="@string/perm_desc_media_store_operations"
+        android:permissionGroup="android.permission-group.SYSTEM_TOOLS"
+        android:protectionLevel="dangerous" />
+
+    <uses-permission android:name="com.thomashofmann.xposed.mediascanneroptimizer.permission.MEDIA_STORE_OPERATIONS"/>
 </manifest>
 

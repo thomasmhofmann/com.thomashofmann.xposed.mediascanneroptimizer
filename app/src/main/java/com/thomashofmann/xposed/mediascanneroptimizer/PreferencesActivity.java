@@ -1,4 +1,4 @@
-package com.thomashofmann.android.xposed.mediascanner.optimizer.ui;
+package com.thomashofmann.xposed.mediascanneroptimizer;
 
 import android.os.Bundle;
 import android.preference.PreferenceActivity;

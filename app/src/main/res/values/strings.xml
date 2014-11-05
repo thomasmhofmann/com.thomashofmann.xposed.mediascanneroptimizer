@@ -1,8 +1,16 @@
 <resources>
 
-    <string name="app_name">Media Scanner Optimizer</string>
-	<string name="launcher_name">Media Scanner Settings</string>
-	
+    <string name="app_name">Xposed Media Scanner Optimizer</string>
+	<string name="launcher_name">Xposed Media Scanner Optimizer</string>
+
+    <string name="pref_logging_disabled_summary">Not logging</string>
+    <string name="pref_logging_enabled_summary">Logging to logcat</string>
+    <string name="pref_logging_state_title">Catlog</string>
+
+    <string name="pref_log_to_xposed_log_disabled_summary">Not logging</string>
+    <string name="pref_log_to_xposed_log_enabled_summary">Logging to Xposed log</string>
+    <string name="pref_log_to_xposed_log_state_title">Xposed Log</string>
+
     <string name="pref_prevent_repetetive_scans_state_title">Repetetive Scans</string>
     <string name="pref_prevent_repetetive_scans_enabled_summary">Prevent repetetive scans (suggested)</string>
     <string name="pref_prevent_repetetive_scans_disable_summary">Allow repetetive scans</string>
@@ -16,12 +24,12 @@
     <string name="pref_run_media_scanner_with_background_thread_priority_disable_summary">Run with reduced priority</string>
     
     <string name="pref_restrict_directories_to_scan_title">Directories</string>
-    <string name="pref_restrict_directories_to_scan_enabled_summary">Restrict scan to specific directories</string>
+    <string name="pref_restrict_directories_to_scan_enabled_summary">Restrict scan to directories that contain a .scanMedia file and subdirectories.</string>
     <string name="pref_restrict_directories_to_scan_disable_summary">Scan all directories</string>
     
     <string name="pref_restrict_to_certain_media_types_title">Media Types</string>
     <string name="pref_restrict_to_certain_media_types_disable_summary">Scan all media types</string>
-    <string name="pref_restrict_to_certain_media_types_enabled_summary">Restrict scanned media types in certain directories</string>
+    <string name="pref_restrict_to_certain_media_types_enabled_summary">Restrict scanning for media types based upon the existence of .scanMusic, .scanVideo and .scanPictures files.</string>
     
     <string name="pref_show_results_title">Show Results</string>
     <string name="pref_show_results_enabled_summary">Show results as notifications</string>
@@ -31,6 +39,8 @@
     <string name="pref_trigger_media_scan_summary">Tap to trigger a Media Scan right now</string>
    
     <string name="pref_delete_media_store_title">Rebuild Media Store</string>
-    <string name="pref_delete_media_store_summary">Tap to delete existing entries in the media store for the external volume and trigger a rescan (improves scan times when scans are restricted to certain directories). Will not work in case a scan is currently in progress.</string>
-    
+    <string name="pref_delete_media_store_summary">Tap to delete existing entries in the media store and trigger a rescan (improves scan times when scans are restricted to certain directories or media type). Will not work in case a scan is currently in progress.</string>
+
+    <string name="perm_label_media_store_operations">Request Media Store Operations</string>
+    <string name="perm_desc_media_store_operations">Permission to mess with the media store, e.g. rescan, delete media store contens.</string>
 </resources>
