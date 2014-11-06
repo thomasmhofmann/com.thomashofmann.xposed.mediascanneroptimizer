@@ -2,6 +2,7 @@ package com.thomashofmann.xposed.mediascanneroptimizer;
 
 import android.app.Notification;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
@@ -17,12 +18,11 @@ import android.os.Process;
 import android.text.format.DateUtils;
 
 import com.thomashofmann.xposed.lib.Logger;
+import com.thomashofmann.xposed.lib.Paypal;
 import com.thomashofmann.xposed.lib.UnexpectedException;
 import com.thomashofmann.xposed.lib.XposedModule;
 
 import java.io.File;
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -42,10 +42,8 @@ public class MsoXposedMod extends XposedModule {
     private Map<Integer, Integer> startIdsByPid = new HashMap<Integer, Integer>();
     private Map<String, Intent> intentsByVolume = new HashMap<String, Intent>();
     private Map<Integer, String> volumesByStartId = new HashMap<Integer, String>();
-
     private int numberOfStartCommandsForExternalVolume;
     private int numberOfSuccessfulRunsForExternalVolume;
-
     private long prescanStartTime;
     private long prescanEndTime;
     private long scanTime;
@@ -53,9 +51,7 @@ public class MsoXposedMod extends XposedModule {
     private long postscanEndTime;
     private long totalStartTime;
     private long totalEndTime;
-
     private int scanFinishedCounter = 0;
-
     private static Handler handler;
 
     private enum MediaFileTypeEnum {
@@ -91,7 +87,7 @@ public class MsoXposedMod extends XposedModule {
                 } else {
                     try {
                         deleteMediaStoreContent(context);
-                        Logger.i("Deleted media store content.");
+                        createNotification("Deleted media store content.");
                     } catch (Exception e) {
                         UnexpectedException unexpectedException = new UnexpectedException("Failed to delete media store contents", e);
                         createNotification("Problem", unexpectedException);
@@ -261,7 +257,7 @@ public class MsoXposedMod extends XposedModule {
 
                         if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
                             Logger.i("Set service to foreground");
-                            Notification notification = getNotification(service, "MediaScanner",
+                            Notification notification = getNotification(service, "Media Scanner Optimizer",
                                     "Processing volume " + volumeName).build();
                             service.startForeground(FOREGROUND_NOTIFICATION, notification);
                         }
@@ -320,10 +316,12 @@ public class MsoXposedMod extends XposedModule {
                         Notification.Builder notificationBuilder = getNotification(context, "MediaScanner "
                                 + volumeName, "Scan directories time " + scanDirectoriesDuration);
                         notificationBuilder.setStyle(inboxStyle);
-                        getNotificationManager(context).notify(SCAN_FINISHED_NOTIFICATION + scanFinishedCounter++,
-                                notificationBuilder.build());
-                    }
 
+                        Intent donateIntent = Paypal.createDonationIntent(context, "email@thomashofmann.com", "XMSO", "EUR");
+                        PendingIntent piDonate = PendingIntent.getActivity(getApplicationContext(), 0, donateIntent, PendingIntent.FLAG_ONE_SHOT);
+                        notificationBuilder.addAction(android.R.drawable.ic_menu_add, "Donate", piDonate);
+                        getNotificationManager(context).notify(SCAN_FINISHED_NOTIFICATION + scanFinishedCounter++, notificationBuilder.build());
+                    }
                 });
 
         XposedHelpers.findAndHookMethod("com.android.providers.media.MediaScannerService",
@@ -335,7 +333,6 @@ public class MsoXposedMod extends XposedModule {
 
                         Logger.i("scanFile is called for file {0} and mime type {1}", path, mimetype);
                     }
-
                 });
 
         XposedHelpers.findAndHookMethod("com.android.providers.media.MediaScannerReceiver",
@@ -379,7 +376,6 @@ public class MsoXposedMod extends XposedModule {
                         if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_with_background_thread_priority_state", true)) {
                             Logger.i("Changing thread priority in MediaScanner constructor");
                             Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
-                            // + Process.THREAD_PRIORITY_MORE_FAVORABLE);
                         }
                     }
                 });

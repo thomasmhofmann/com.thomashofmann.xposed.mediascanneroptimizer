@@ -1,5 +1,6 @@
 package com.thomashofmann.xposed.mediascanneroptimizer;
 
+import android.app.PendingIntent;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -8,6 +9,7 @@ import android.preference.Preference;
 import android.util.Log;
 
 import com.thomashofmann.xposed.lib.Logger;
+import com.thomashofmann.xposed.lib.Paypal;
 import com.thomashofmann.xposed.lib.XposedPreferenceFragment;
 import com.thomashofmann.xposed.mediascanneroptimizer.R;
 
@@ -18,6 +20,15 @@ public class PreferencesFragment extends XposedPreferenceFragment {
     public void onCreate(final Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         this.addPreferencesFromResource(R.xml.preferences);
+
+        Preference triggerDonate = (Preference) findPreference("pref_donate");
+        triggerDonate.setOnPreferenceClickListener(new Preference.OnPreferenceClickListener() {
+            @Override
+            public boolean onPreferenceClick(Preference arg0) {
+                triggerDonate();
+                return true;
+            }
+        });
 
         Preference triggerRescan = (Preference) findPreference("pref_trigger_media_scan");
         triggerRescan.setOnPreferenceClickListener(new Preference.OnPreferenceClickListener() {
@@ -41,6 +52,11 @@ public class PreferencesFragment extends XposedPreferenceFragment {
     @Override
     protected String getPreferencesChangedAction() {
         return "pref-xmso";
+    }
+
+    private void triggerDonate() {
+        Intent intent = Paypal.createDonationIntent(getActivity(), "email@thomashofmann.com", "XMSO", "EUR");
+        getActivity().startActivity(intent);
     }
 
     private void triggerMediaScanner() {
