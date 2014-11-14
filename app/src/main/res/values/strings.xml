@@ -23,7 +23,7 @@
     
     <string name="pref_run_media_scanner_with_background_thread_priority_title">Thread Priority</string>
     <string name="pref_run_media_scanner_with_background_thread_priority_enabled_summary">Force background thread priority (suggested)</string>
-    <string name="pref_run_media_scanner_with_background_thread_priority_disable_summary">Keep default thread priority (which depends on whether the service runs as foreground service or not.</string>
+    <string name="pref_run_media_scanner_with_background_thread_priority_disable_summary">Keep default thread priority (which depends on whether the service runs as foreground service or not).</string>
     
     <string name="pref_restrict_directories_to_scan_title">Directories</string>
     <string name="pref_restrict_directories_to_scan_enabled_summary">Restrict scanning to directories that contain a .scanMedia file and subdirectories.</string>

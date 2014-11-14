@@ -10,6 +10,8 @@ import android.content.ContentProviderClient;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.res.XModuleResources;
+import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -31,13 +33,14 @@ import java.util.Map;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
+import de.robv.android.xposed.callbacks.XC_InitPackageResources;
 
 public class MsoXposedMod extends XposedModule {
     private static final String[] TARGET_PACKAGE_NAMES = new String[]{"com.android.providers.media"};
     private static final String PREF_CHANGE_ACTION = "pref-xmso";
-    private final static String TAG = "xmso";
-    private final static int FOREGROUND_NOTIFICATION = 1;
-    private final static int SCAN_FINISHED_NOTIFICATION = 10;
+    private static final String TAG = "xmso";
+    private static final int FOREGROUND_NOTIFICATION = 1;
+    private static final int SCAN_FINISHED_NOTIFICATION = 10;
 
     private Map<Integer, Integer> startIdsByPid = new HashMap<Integer, Integer>();
     private Map<String, Intent> intentsByVolume = new HashMap<String, Intent>();
@@ -87,21 +90,22 @@ public class MsoXposedMod extends XposedModule {
                 } else {
                     try {
                         deleteMediaStoreContent(context);
-                        createNotification("Deleted media store content.");
+                        createSimpleNotification("Deleted media store content.",null,null);
                     } catch (Exception e) {
                         UnexpectedException unexpectedException = new UnexpectedException("Failed to delete media store contents", e);
-                        createNotification("Problem", unexpectedException);
+                        createAndShowNotification("Xposed Media Scanner Optimizer", unexpectedException);
                     }
                 }
             }
         }
     };
 
+    private static Map<String, List<MediaFileTypeEnum>> mediaFilesToConsiderByDirectory = new HashMap<String, List<MediaFileTypeEnum>>();
+
     public MsoXposedMod() {
         Logger.init("XMSO", getSettings());
     }
 
-    private static Map<String, List<MediaFileTypeEnum>> mediaFilesToConsiderByDirectory = new HashMap<String, List<MediaFileTypeEnum>>();
 
     @Override
     protected List<String> getTargetPackageNames() {
@@ -257,9 +261,8 @@ public class MsoXposedMod extends XposedModule {
 
                         if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
                             Logger.i("Set service to foreground");
-                            Notification notification = getNotification(service, "Media Scanner Optimizer",
-                                    "Processing volume " + volumeName).build();
-                            service.startForeground(FOREGROUND_NOTIFICATION, notification);
+                            Notification.Builder notification = createSimpleNotification("Xposed Media Scanner", "Processing volume " + volumeName, null);
+                            service.startForeground(FOREGROUND_NOTIFICATION, notification.build());
                         }
 
                         if (volumeName.equals("external")
@@ -306,21 +309,26 @@ public class MsoXposedMod extends XposedModule {
                         String scanDuration = formatDuration(scanTime);
                         String postscanDuration = formatDuration(postscanTime);
 
-                        Notification.InboxStyle inboxStyle = new Notification.InboxStyle();
-                        inboxStyle.setBigContentTitle("MediaScanner details:");
-                        inboxStyle.addLine("Pre-scan: " + prescanDuration);
-                        inboxStyle.addLine("Scan: " + scanDuration);
-                        inboxStyle.addLine("Post-scan: " + postscanDuration);
-
                         String scanDirectoriesDuration = formatDuration(totalEndTime - totalStartTime);
-                        Notification.Builder notificationBuilder = getNotification(context, "MediaScanner "
-                                + volumeName, "Scan directories time " + scanDirectoriesDuration);
-                        notificationBuilder.setStyle(inboxStyle);
+                        Notification.Builder notification = createInboxStyleNotification("Xposed Media Scanner ",
+                                "Scan directories time " + scanDirectoriesDuration,
+                                "Volume " + volumeName + " (Expand for details)",
+                                null,
+                                "Pre-scan: " + prescanDuration,
+                                "Scan: " + scanDuration,
+                                "Post-scan: " + postscanDuration
+                        );
 
+                        //notification.setLargeIcon(BitmapFactory.decodeResource(getApplicationContext().getResources(), MODULE_DRAWABLE_LAUNCHER_ICON));
                         Intent donateIntent = Paypal.createDonationIntent(context, "email@thomashofmann.com", "XMSO", "EUR");
-                        PendingIntent piDonate = PendingIntent.getActivity(getApplicationContext(), 0, donateIntent, PendingIntent.FLAG_ONE_SHOT);
-                        notificationBuilder.addAction(android.R.drawable.ic_menu_add, "Donate", piDonate);
-                        getNotificationManager(context).notify(SCAN_FINISHED_NOTIFICATION + scanFinishedCounter++, notificationBuilder.build());
+                        PendingIntent piDonate = PendingIntent.getActivity(context, 0, donateIntent, 0);
+
+                        notification.addAction(android.R.drawable.ic_menu_add, "Donate", piDonate);
+                        notification.setContentIntent(piDonate);
+
+                        PendingIntent piSend = buildActionSendPendingIntent(context, "Volume " + volumeName + " results", "Pre-scan: " + prescanDuration, "Scan: " + scanDuration, "Post-scan: " + postscanDuration);
+                        notification.addAction(android.R.drawable.ic_menu_send, "Send", piSend);
+                        showNotification(notification);
                     }
                 });
 
@@ -421,16 +429,8 @@ public class MsoXposedMod extends XposedModule {
                             Logger.d("In android.media.MediaScanner#processDirectory beforeHookedMethod");
                             if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
                                 String path = (String) methodHookParam.args[0];
-                                Object field = getField(methodHookParam.thisObject, "mContext");
-                                if (field instanceof Context) {
-                                    Logger.i("Updating notification with path {0}", path);
-                                    Context context = (Context) field;
-                                    Notification notification = getNotification(context, "MediaScanner", "Scanning " + path)
-                                            .build();
-                                    getNotificationManager(context).notify(FOREGROUND_NOTIFICATION, notification);
-                                } else {
-                                    Logger.i("Could not retrieve context to update notification with path {0}", path);
-                                }
+                                Notification.Builder notification = createSimpleNotification("Xposed Media Scanner", "Scanning " + path, null);
+                                getNotificationManager(getApplicationContext()).notify(FOREGROUND_NOTIFICATION, notification.build());
                             }
                             start = System.currentTimeMillis();
                         }
@@ -448,16 +448,8 @@ public class MsoXposedMod extends XposedModule {
                         protected void beforeHookedMethod(MethodHookParam methodHookParam) throws Throwable {
                             Logger.d("In android.media.MediaScanner#processDirectory prescan");
                             if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
-                                Object field = getField(methodHookParam.thisObject, "mContext");
-                                if (field instanceof Context) {
-                                    Logger.i("Updating notification with postscan");
-                                    Context context = (Context) field;
-                                    Notification notification = getNotification(context, "MediaScanner", "Postscan")
-                                            .build();
-                                    getNotificationManager(context).notify(FOREGROUND_NOTIFICATION, notification);
-                                } else {
-                                    Logger.i("Could not retrieve context to update notification for postscan");
-                                }
+                                Notification.Builder notification = createSimpleNotification("Xpossed Media Scanner", "Postscan", null);
+                                getNotificationManager(getApplicationContext()).notify(FOREGROUND_NOTIFICATION, notification.build());
                             }
                             postscanStartTime = System.currentTimeMillis();
                         }
@@ -482,16 +474,6 @@ public class MsoXposedMod extends XposedModule {
         } catch (NoSuchFieldError e) {
             return null;
         }
-    }
-
-    protected Notification.Builder getNotification(Context context, String title, String details) {
-        Notification.Builder notificationBuilder = new Notification.Builder(context);
-        return notificationBuilder.setSmallIcon(MODULE_DRAWABLE_NOTIFICATION_ICON).setContentTitle(title)
-                .setContentText(details);
-    }
-
-    private NotificationManager getNotificationManager(Context context) {
-        return (NotificationManager) context.getSystemService(Service.NOTIFICATION_SERVICE);
     }
 
     protected TreatAsMediaFileEnum shouldBeConsideredAsMediaFile(File file) {
