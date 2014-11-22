@@ -30,9 +30,9 @@
     <string name="pref_restrict_directories_to_scan_disable_summary">Scan all directories. This consumes more time and adds media files from all directories to the media store.</string>
     
     <string name="pref_restrict_to_certain_media_types_title">Media Types</string>
-    <string name="pref_restrict_to_certain_media_types_disable_summary">Scan all media types</string>
     <string name="pref_restrict_to_certain_media_types_enabled_summary">Restrict scanning for media types based upon the existence of .scanMusic, .scanVideo and .scanPictures files.</string>
-    
+    <string name="pref_restrict_to_certain_media_types_disable_summary">Scan all media types</string>
+
     <string name="pref_show_results_title">Result Notifications</string>
     <string name="pref_show_results_enabled_summary">Show results/durations for a scan using a notification</string>
     <string name="pref_show_results_disable_summary">Do not show any notifications when a scan is finished</string>
@@ -40,8 +40,8 @@
     <string name="pref_trigger_media_scan_title">Trigger MediaScanner</string>
     <string name="pref_trigger_media_scan_summary">Tap to trigger a media scan right now</string>
    
-    <string name="pref_delete_media_store_title">Rebuild Media Store</string>
-    <string name="pref_delete_media_store_summary">Tap to delete existing entries in the media store (improves scan times when scans are restricted to certain directories or media types). Will not work in case a scan is currently in progress.</string>
+    <string name="pref_delete_media_store_title">Delete Media Store Contents</string>
+    <string name="pref_delete_media_store_summary">Tap to delete existing entries in the media store (improves scan times when scans are restricted to certain directories or media types). Will not work in case a scan is currently in progress. This might take some seconds. A notification will be shown when the entries have been deleted.</string>
 
     <string name="perm_label_media_store_operations">Request Media Store Operations</string>
     <string name="perm_desc_media_store_operations">Permission to mess with the media store, e.g. rescan, delete media store contents.</string>

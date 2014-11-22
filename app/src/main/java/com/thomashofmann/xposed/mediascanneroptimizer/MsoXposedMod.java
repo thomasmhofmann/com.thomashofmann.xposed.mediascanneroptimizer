@@ -1,7 +1,6 @@
 package com.thomashofmann.xposed.mediascanneroptimizer;
 
 import android.app.Notification;
-import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.BroadcastReceiver;
@@ -10,8 +9,6 @@ import android.content.ContentProviderClient;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.res.XModuleResources;
-import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -19,8 +16,11 @@ import android.os.Handler;
 import android.os.Process;
 import android.text.format.DateUtils;
 
+import com.thomashofmann.xposed.lib.BeforeMethodHook;
 import com.thomashofmann.xposed.lib.Logger;
+import com.thomashofmann.xposed.lib.MethodHook;
 import com.thomashofmann.xposed.lib.Paypal;
+import com.thomashofmann.xposed.lib.Procedure1;
 import com.thomashofmann.xposed.lib.UnexpectedException;
 import com.thomashofmann.xposed.lib.XposedModule;
 
@@ -33,12 +33,15 @@ import java.util.Map;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
-import de.robv.android.xposed.callbacks.XC_InitPackageResources;
 
 public class MsoXposedMod extends XposedModule {
     private static final String[] TARGET_PACKAGE_NAMES = new String[]{"com.android.providers.media"};
     private static final String PREF_CHANGE_ACTION = "pref-xmso";
     private static final String TAG = "xmso";
+    private static final String SCAN_MEDIA_MARKER = ".scanMedia";
+    private static final String SCAN_MUSIC_MARKER = ".scanMusic";
+    private static final String SCAN_PICTURES_MARKER = ".scanPictures";
+    private static final String SCAN_VIDEO_MARKER = ".scanVideo";
     private static final int FOREGROUND_NOTIFICATION = 1;
     private static final int SCAN_FINISHED_NOTIFICATION = 10;
 
@@ -56,6 +59,8 @@ public class MsoXposedMod extends XposedModule {
     private long totalEndTime;
     private int scanFinishedCounter = 0;
     private static Handler handler;
+    private Service mediaScannerService;
+    private boolean broadcastReceiverRegistered;
 
     private enum MediaFileTypeEnum {
         music, video, picture
@@ -81,7 +86,7 @@ public class MsoXposedMod extends XposedModule {
                     ComponentName componentName = new ComponentName("com.android.providers.media", "com.android.providers.media.MediaScannerService");
                     serviceIntent.setComponent(componentName);
                     serviceIntent.putExtras(serviceExtras);
-                    getApplicationContext().startService(serviceIntent);
+                    context.startService(serviceIntent);
                 }
             } else if (intent.getAction().equals(PreferencesFragment.ACTION_DELETE_MEDIA_STORE_CONTENTS)) {
                 Logger.i("Request to delete MediaStore content");
@@ -90,10 +95,10 @@ public class MsoXposedMod extends XposedModule {
                 } else {
                     try {
                         deleteMediaStoreContent(context);
-                        createSimpleNotification("Deleted media store content.",null,null);
+                        createSimpleNotification(context, "Deleted media store content.", null, null);
                     } catch (Exception e) {
                         UnexpectedException unexpectedException = new UnexpectedException("Failed to delete media store contents", e);
-                        createAndShowNotification("Xposed Media Scanner Optimizer", unexpectedException);
+                        createAndShowNotification(context, "Media Scanner Optimizer", unexpectedException);
                     }
                 }
             }
@@ -133,91 +138,87 @@ public class MsoXposedMod extends XposedModule {
     }
 
     @Override
-    protected void applicationContextAvailable(Context context) {
-        IntentFilter filter = new IntentFilter(PreferencesFragment.ACTION_SCAN_EXTERNAL);
-        filter.addAction(PreferencesFragment.ACTION_DELETE_MEDIA_STORE_CONTENTS);
-        context.registerReceiver(broadcastReceiver, filter, "com.thomashofmann.xposed.mediascanneroptimizer.permission.MEDIA_STORE_OPERATIONS", null);
-    }
-
-    @Override
-    protected void applicationTerminating(int pid) {
-        getApplicationContext().unregisterReceiver(broadcastReceiver);
-        super.applicationTerminating(pid);
-    }
-
-    @Override
     public void doHandleLoadPackage() {
-        XposedHelpers.findAndHookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "isNoMediaFile",
-                String.class, new XC_MethodHook() {
+
+/*
+ * Internal service helper that no-one should use directly.
+ *
+ * The way the scan currently works is:
+ * - The Java MediaScannerService creates a MediaScanner (this class), and calls
+ *   MediaScanner.scanDirectories on it.
+ * - scanDirectories() calls the native processDirectory() for each of the specified directories.
+ * - the processDirectory() JNI method wraps the provided mediascanner client in a native
+ *   'MyMediaScannerClient' class, then calls processDirectory() on the native MediaScanner
+ *   object (which got created when the Java MediaScanner was created).
+ * - native MediaScanner.processDirectory() calls
+ *   doProcessDirectory(), which recurses over the folder, and calls
+ *   native MyMediaScannerClient.scanFile() for every file whose extension matches.
+ * - native MyMediaScannerClient.scanFile() calls back on Java MediaScannerClient.scanFile,
+ *   which calls doScanFile, which after some setup calls back down to native code, calling
+ *   MediaScanner.processFile().
+ * - MediaScanner.processFile() calls one of several methods, depending on the type of the
+ *   file: parseMP3, parseMP4, parseMidi, parseOgg or parseWMA.
+ * - each of these methods gets metadata key/value pairs from the file, and repeatedly
+ *   calls native MyMediaScannerClient.handleStringTag, which calls back up to its Java
+ *   counterparts in this file.
+ * - Java handleStringTag() gathers the key/value pairs that it's interested in.
+ * - once processFile returns and we're back in Java code in doScanFile(), it calls
+ *   Java MyMediaScannerClient.endFile(), which takes all the data that's been
+ *   gathered and inserts an entry in to the database.
+ *
+ * In summary:
+ * Java MediaScannerService calls
+ * Java MediaScanner scanDirectories, which calls
+ * Java MediaScanner processDirectory (native method), which calls
+ * native MediaScanner processDirectory, which calls
+ * native MyMediaScannerClient scanFile, which calls
+ * Java MyMediaScannerClient scanFile, which calls
+ * Java MediaScannerClient doScanFile, which calls
+ * Java MediaScanner processFile (native method), which calls
+ * native MediaScanner processFile, which calls
+ * native parseMP3, parseMP4, parseMidi, parseOgg or parseWMA, which calls
+ * native MyMediaScanner handleStringTag, which calls
+ * Java MyMediaScanner handleStringTag.
+ * Once MediaScanner processFile returns, an entry is inserted in to the database.
+ *
+ * The MediaScanner class is not thread-safe, so it should only be used in a single threaded manner.
+ */
+        hookMethod("com.android.providers.media.MediaScannerReceiver",
+                getLoadPackageParam().classLoader, "onReceive", Context.class, Intent.class,
+                new BeforeMethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
                     @Override
-                    protected void beforeHookedMethod(MethodHookParam methodHookParam) throws Throwable {
-                        String pathToFile = (String) methodHookParam.args[0];
-                        if (pathToFile.startsWith("/system")) {
-                            return;
-                        }
-
-                        if (!getSettings().getPreferences().getBoolean("pref_restrict_to_certain_media_types_state", false)) {
-                            Logger.d("Not restricting scan to certain media types");
-                            return;
-                        }
-
-                        File file = new File(pathToFile);
-                        if (!file.isDirectory()) {
-                            TreatAsMediaFileEnum consideredAsMediaFile = shouldBeConsideredAsMediaFile(file);
-                            if (consideredAsMediaFile != TreatAsMediaFileEnum.media_file_default) {
-                                switch (consideredAsMediaFile) {
-                                    case media_file_true:
-                                        methodHookParam.setResult(false);
-                                        break;
-                                    case media_file_false:
-                                        Logger.d("The file {0} should not be considered as a media file",
-                                                file.getAbsolutePath());
-                                        methodHookParam.setResult(true);
-                                        break;
-                                }
-                            }
-                        }
+                    public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                        Logger.i("onReceive is called in MediaScannerReceiver");
+                        Intent intent = (Intent) methodHookParam.args[1];
+                        Logger.i("Intent {0} received.", intent);
+                        Bundle extras = intent.getExtras();
+                        Logger.i("Extras are {0}", extras);
                     }
+                }));
 
-                });
 
-        XposedHelpers.findAndHookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "scanMtpFile",
-                String.class, String.class, int.class, int.class, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam methodHookParam) throws Throwable {
-                        String pathToFile = (String) methodHookParam.args[0];
-                        Logger.i("scanMtpFile is called for {0}", pathToFile);
-                    }
-                });
-
-        XposedHelpers.findAndHookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "scanSingleFile",
-                String.class, String.class, String.class, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam methodHookParam) throws Throwable {
-                        String pathToFile = (String) methodHookParam.args[0];
-                        Logger.i("scanSingleFile is called for {0}", pathToFile);
-                    }
-                });
-
-        XposedHelpers.findAndHookMethod("com.android.providers.media.MediaScannerService",
+        hookMethod("com.android.providers.media.MediaScannerService",
                 getLoadPackageParam().classLoader, "onStartCommand", Intent.class, int.class, int.class,
-                new XC_MethodHook() {
+                new BeforeMethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
                     @Override
-                    protected void beforeHookedMethod(MethodHookParam methodHookParam) throws Throwable {
+                    public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
                         handler = new Handler();
                         Intent intent = (Intent) methodHookParam.args[0];
                         Bundle extras = intent.getExtras();
                         String filePathInIntentExtra = extras != null ? extras.getString("filepath") : null;
                         String mimeTypeInIntentExtra = extras != null ? extras.getString("mimetype") : null;
                         String volumeInIntentExtra = extras != null ? extras.getString("volume") : null;
-                        Object thisObject = methodHookParam.thisObject;
+                        mediaScannerService = (Service) methodHookParam.thisObject;
                         int startId = (Integer) methodHookParam.args[2];
                         Logger.i("onStartCommand is called with Intent {0}, startId {1}, filepath {2}, mimetype {3} and volume {4} on {5}",
                                 intent, startId, filePathInIntentExtra, mimeTypeInIntentExtra, volumeInIntentExtra,
-                                thisObject);
+                                mediaScannerService);
+
 
                         startIdsByPid.put(Process.myPid(), startId);
                         Logger.d("startIdsByPid is {0}", startIdsByPid);
+
+                        installBroadcastReceiverOnce(mediaScannerService);
 
                         getSettings().reload();
 
@@ -246,23 +247,22 @@ public class MsoXposedMod extends XposedModule {
                         Logger.i("Number of successful runs for external volume is {0}",
                                 numberOfSuccessfulRunsForExternalVolume);
                     }
-                });
+                }));
 
-        XposedHelpers.findAndHookMethod("com.android.providers.media.MediaScannerService",
-                getLoadPackageParam().classLoader, "scan", String[].class, String.class, new XC_MethodHook() {
+        hookMethod("com.android.providers.media.MediaScannerService",
+                getLoadPackageParam().classLoader, "scan", String[].class, String.class,
+                new MethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
                     @Override
-                    protected void beforeHookedMethod(MethodHookParam methodHookParam) throws Throwable {
+                    public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
                         String[] directories = (String[]) methodHookParam.args[0];
                         String volumeName = (String) methodHookParam.args[1];
-                        Object thisObject = methodHookParam.thisObject;
-                        Service service = (Service) thisObject;
                         Logger.i("scan is called for directories {0} on volume {1}", Arrays.toString(directories),
                                 volumeName);
 
                         if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
                             Logger.i("Set service to foreground");
-                            Notification.Builder notification = createSimpleNotification("Xposed Media Scanner", "Processing volume " + volumeName, null);
-                            service.startForeground(FOREGROUND_NOTIFICATION, notification.build());
+                            Notification.Builder notification = createSimpleNotification(mediaScannerService, "Media Scanner Optimizer", "Processing volume " + volumeName, null);
+                            mediaScannerService.startForeground(FOREGROUND_NOTIFICATION, notification.build());
                         }
 
                         if (volumeName.equals("external")
@@ -288,8 +288,9 @@ public class MsoXposedMod extends XposedModule {
                                     Arrays.toString(directories));
                         }
                     }
-
-                    protected void afterHookedMethod(MethodHookParam methodHookParam) throws Throwable {
+                }, new Procedure1<XC_MethodHook.MethodHookParam>() {
+                    @Override
+                    public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
                         String volumeName = (String) methodHookParam.args[1];
                         Object thisObject = methodHookParam.thisObject;
                         Service service = (Service) thisObject;
@@ -310,16 +311,15 @@ public class MsoXposedMod extends XposedModule {
                         String postscanDuration = formatDuration(postscanTime);
 
                         String scanDirectoriesDuration = formatDuration(totalEndTime - totalStartTime);
-                        Notification.Builder notification = createInboxStyleNotification("Xposed Media Scanner ",
+                        Notification.Builder notification = createInboxStyleNotification(context, "Media Scanner Optimizer",
                                 "Scan directories time " + scanDirectoriesDuration,
                                 "Volume " + volumeName + " (Expand for details)",
-                                null,
+                                "Volume " + volumeName,
                                 "Pre-scan: " + prescanDuration,
                                 "Scan: " + scanDuration,
                                 "Post-scan: " + postscanDuration
                         );
 
-                        //notification.setLargeIcon(BitmapFactory.decodeResource(getApplicationContext().getResources(), MODULE_DRAWABLE_LAUNCHER_ICON));
                         Intent donateIntent = Paypal.createDonationIntent(context, "email@thomashofmann.com", "XMSO", "EUR");
                         PendingIntent piDonate = PendingIntent.getActivity(context, 0, donateIntent, 0);
 
@@ -328,37 +328,47 @@ public class MsoXposedMod extends XposedModule {
 
                         PendingIntent piSend = buildActionSendPendingIntent(context, "Volume " + volumeName + " results", "Pre-scan: " + prescanDuration, "Scan: " + scanDuration, "Post-scan: " + postscanDuration);
                         notification.addAction(android.R.drawable.ic_menu_send, "Send", piSend);
-                        showNotification(notification);
+                        showNotification(context, notification);
                     }
-                });
+                }));
 
-        XposedHelpers.findAndHookMethod("com.android.providers.media.MediaScannerService",
-                getLoadPackageParam().classLoader, "scanFile", String.class, String.class, new XC_MethodHook() {
+        Procedure1<XC_MethodHook.MethodHookParam> hookScanFileInMediaScannerServiceCode = new Procedure1<XC_MethodHook.MethodHookParam>() {
+            @Override
+            public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                String path = (String) methodHookParam.args[0];
+                String mimetype = (String) methodHookParam.args[1];
+                Logger.i("scanFile is called for file {0} and mime type {1}", path, mimetype);
+                File file = new File(path);
+                if (file.exists() && shouldScanFileBasedOnDirectory(file)) {
+                    Logger.i("File with path {0} will be scanned", path);
+                } else {
+                    Logger.i("File with path {0} should not be scanned", path);
+                    methodHookParam.setResult(null);
+                }
+            }
+        };
+
+        try {
+            hookMethod("com.android.providers.media.MediaScannerService",
+                    getLoadPackageParam().classLoader, "scanFile", String.class, String.class,
+                    new BeforeMethodHook(hookScanFileInMediaScannerServiceCode));
+        } catch (NoSuchMethodError e) {
+            try {
+                Logger.i("Cannot find method scanFile will now try to hook scanFileOrDirectory.");
+                // try Cyanogenmod method
+                XposedHelpers.findAndHookMethod("com.android.providers.media.MediaScannerService",
+                        getLoadPackageParam().classLoader, "scanFileOrDirectory", String.class, String.class,
+                        new BeforeMethodHook(hookScanFileInMediaScannerServiceCode));
+            } catch (NoSuchMethodError e2) {
+                Logger.w("Cannot find method scanFileOrDirectory.");
+            }
+        }
+
+
+        hookMethod("android.app.Service", getLoadPackageParam().classLoader, "stopSelf", int.class,
+                new BeforeMethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
                     @Override
-                    protected void beforeHookedMethod(MethodHookParam methodHookParam) throws Throwable {
-                        String path = (String) methodHookParam.args[0];
-                        String mimetype = (String) methodHookParam.args[1];
-
-                        Logger.i("scanFile is called for file {0} and mime type {1}", path, mimetype);
-                    }
-                });
-
-        XposedHelpers.findAndHookMethod("com.android.providers.media.MediaScannerReceiver",
-                getLoadPackageParam().classLoader, "onReceive", Context.class, Intent.class, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam methodHookParam) throws Throwable {
-                        Logger.i("onReceive is called in MediaScannerReceiver");
-                        Intent intent = (Intent) methodHookParam.args[1];
-                        Logger.i("Intent {0} received.", intent);
-                        Bundle extras = intent.getExtras();
-                        Logger.i("Extras are {0}", extras);
-                    }
-                });
-
-        XposedHelpers.findAndHookMethod("android.app.Service", getLoadPackageParam().classLoader, "stopSelf", int.class,
-                new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam methodHookParam) throws Throwable {
+                    public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
                         Object thisObject = methodHookParam.thisObject;
                         if (thisObject.getClass().getCanonicalName()
                                 .equals("com.android.providers.media.MediaScannerService")) {
@@ -375,51 +385,108 @@ public class MsoXposedMod extends XposedModule {
                             volumesByStartId.remove(startId);
                         }
                     }
-                });
+                }));
+
+
+        hookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "isNoMediaFile",
+                String.class, new BeforeMethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
+                    @Override
+                    public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                        String pathToFile = (String) methodHookParam.args[0];
+                        if (pathToFile.startsWith("/system")) {
+                            return;
+                        }
+
+                        if (!getSettings().getPreferences().getBoolean("pref_restrict_to_certain_media_types_state", false)) {
+                            Logger.d("Not restricting scan to certain media types");
+                            return;
+                        }
+
+                        File file = new File(pathToFile);
+                        if (!file.isDirectory()) {
+                            TreatAsMediaFileEnum consideredAsMediaFile = shouldBeConsideredAsMediaFile(file);
+                            if (consideredAsMediaFile != TreatAsMediaFileEnum.media_file_default) {
+                                switch (consideredAsMediaFile) {
+                                    case media_file_true:
+                                        methodHookParam.setResult(false);
+                                        break;
+                                    case media_file_false:
+                                        Logger.d("The file {0} should not be considered as a media file",
+                                                file.getAbsolutePath());
+                                        methodHookParam.setResult(true);
+                                        break;
+                                }
+                            }
+                        }
+                    }
+                }));
+
+        hookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "scanMtpFile",
+                String.class, String.class, int.class, int.class, new BeforeMethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
+                    @Override
+                    public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                        String pathToFile = (String) methodHookParam.args[0];
+                        Logger.i("scanMtpFile is called for {0}", pathToFile);
+                    }
+                }));
+
+        hookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "scanSingleFile",
+                String.class, String.class, String.class, new BeforeMethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
+                    @Override
+                    public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                        String pathToFile = (String) methodHookParam.args[0];
+                        Logger.i("scanSingleFile is called for {0}", pathToFile);
+                    }
+                }));
+
 
         XposedHelpers.findAndHookConstructor("android.media.MediaScanner", getLoadPackageParam().classLoader, Context.class,
-                new XC_MethodHook() {
+                new BeforeMethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
                     @Override
-                    protected void beforeHookedMethod(MethodHookParam methodHookParam) throws Throwable {
+                    public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
                         if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_with_background_thread_priority_state", true)) {
                             Logger.i("Changing thread priority in MediaScanner constructor");
                             Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
                         }
                     }
-                });
+                }));
 
-        XposedHelpers.findAndHookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "scanDirectories",
-                String[].class, String.class, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                        totalStartTime = System.currentTimeMillis();
-                        scanTime = 0;
-                    }
+        hookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "scanDirectories",
+                String[].class, String.class, new MethodHook(
+                        new Procedure1<XC_MethodHook.MethodHookParam>() {
+                            @Override
+                            public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                                totalStartTime = System.currentTimeMillis();
+                                scanTime = 0;
+                            }
+                        },
+                        new Procedure1<XC_MethodHook.MethodHookParam>() {
+                            @Override
+                            public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                                totalEndTime = System.currentTimeMillis();
+                            }
+                        }));
 
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam methodHookParam) throws Throwable {
-                        totalEndTime = System.currentTimeMillis();
-                    }
-                });
-
-        XposedHelpers.findAndHookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "prescan",
-                String.class, boolean.class, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam methodHookParam) throws Throwable {
-                        Logger.d("In android.media.MediaScanner#processDirectory prescan");
-                        prescanStartTime = System.currentTimeMillis();
-                    }
-
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam methodHookParam) throws Throwable {
-                        prescanEndTime = System.currentTimeMillis();
-                    }
-                });
+        hookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "prescan",
+                String.class, boolean.class, new MethodHook(
+                        new Procedure1<XC_MethodHook.MethodHookParam>() {
+                            @Override
+                            public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                                Logger.d("In android.media.MediaScanner#processDirectory prescan");
+                                prescanStartTime = System.currentTimeMillis();
+                            }
+                        },
+                        new Procedure1<XC_MethodHook.MethodHookParam>() {
+                            @Override
+                            public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                                prescanEndTime = System.currentTimeMillis();
+                            }
+                        }));
 
         Class mediaScannerClientClass = null;
         try {
             mediaScannerClientClass = getLoadPackageParam().classLoader.loadClass("android.media.MediaScannerClient");
-            XposedHelpers.findAndHookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "processDirectory",
+            hookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "processDirectory",
                     String.class, mediaScannerClientClass, new XC_MethodHook() {
                         private long start;
                         private long end;
@@ -429,8 +496,8 @@ public class MsoXposedMod extends XposedModule {
                             Logger.d("In android.media.MediaScanner#processDirectory beforeHookedMethod");
                             if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
                                 String path = (String) methodHookParam.args[0];
-                                Notification.Builder notification = createSimpleNotification("Xposed Media Scanner", "Scanning " + path, null);
-                                getNotificationManager(getApplicationContext()).notify(FOREGROUND_NOTIFICATION, notification.build());
+                                Notification.Builder notification = createSimpleNotification(mediaScannerService, "Media Scanner Optimizer", "Scanning " + path, null);
+                                getNotificationManager(mediaScannerService).notify(FOREGROUND_NOTIFICATION, notification.build());
                             }
                             start = System.currentTimeMillis();
                         }
@@ -442,38 +509,39 @@ public class MsoXposedMod extends XposedModule {
                         }
                     });
 
-            XposedHelpers.findAndHookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "postscan",
-                    String[].class, new XC_MethodHook() {
+            hookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "postscan",
+                    String[].class, new MethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
                         @Override
-                        protected void beforeHookedMethod(MethodHookParam methodHookParam) throws Throwable {
+                        public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
                             Logger.d("In android.media.MediaScanner#processDirectory prescan");
                             if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
-                                Notification.Builder notification = createSimpleNotification("Xpossed Media Scanner", "Postscan", null);
-                                getNotificationManager(getApplicationContext()).notify(FOREGROUND_NOTIFICATION, notification.build());
+                                Notification.Builder notification = createSimpleNotification(mediaScannerService, "Media Scanner Optimizer", "Postscan", null);
+                                getNotificationManager(mediaScannerService).notify(FOREGROUND_NOTIFICATION, notification.build());
                             }
                             postscanStartTime = System.currentTimeMillis();
                         }
-
+                    }, new Procedure1<XC_MethodHook.MethodHookParam>() {
                         @Override
-                        protected void afterHookedMethod(MethodHookParam methodHookParam) throws Throwable {
+                        public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
                             postscanEndTime = System.currentTimeMillis();
                         }
-                    });
+                    }));
         } catch (ClassNotFoundException e) {
             throw new UnexpectedException("Failed to load a class", e);
         }
     }
 
-    private String formatDuration(long ms) {
-        return DateUtils.formatElapsedTime(ms / 1000);
+    private void installBroadcastReceiverOnce(Context context) {
+        if (!broadcastReceiverRegistered) {
+            IntentFilter filter = new IntentFilter(PreferencesFragment.ACTION_SCAN_EXTERNAL);
+            filter.addAction(PreferencesFragment.ACTION_DELETE_MEDIA_STORE_CONTENTS);
+            context.registerReceiver(broadcastReceiver, filter, "com.thomashofmann.xposed.mediascanneroptimizer.permission.MEDIA_STORE_OPERATIONS", null);
+            broadcastReceiverRegistered = true;
+        }
     }
 
-    protected Object getField(Object instance, String fieldName) {
-        try {
-            return XposedHelpers.getObjectField(instance, fieldName);
-        } catch (NoSuchFieldError e) {
-            return null;
-        }
+    private String formatDuration(long ms) {
+        return DateUtils.formatElapsedTime(ms / 1000);
     }
 
     protected TreatAsMediaFileEnum shouldBeConsideredAsMediaFile(File file) {
@@ -529,9 +597,9 @@ public class MsoXposedMod extends XposedModule {
             mediaFileTypeRestrictions = new ArrayList<MsoXposedMod.MediaFileTypeEnum>();
         }
 
-        File musicFileTypeMarker = new File(directory, ".scanMusic");
-        File videoFileTypeMarker = new File(directory, ".scanVideo");
-        File picturesFileTypeMarker = new File(directory, ".scanPictures");
+        File musicFileTypeMarker = new File(directory, SCAN_MUSIC_MARKER);
+        File videoFileTypeMarker = new File(directory, SCAN_VIDEO_MARKER);
+        File picturesFileTypeMarker = new File(directory, SCAN_PICTURES_MARKER);
         if (musicFileTypeMarker.exists()) {
             mediaFileTypeRestrictions.add(MediaFileTypeEnum.music);
         }
@@ -557,6 +625,29 @@ public class MsoXposedMod extends XposedModule {
         return mediaFileTypeRestrictions;
     }
 
+    private boolean shouldScanFileBasedOnDirectory(File file) {
+        boolean restrictDirectoriesToScan = getSettings().getPreferences().getBoolean("pref_restrict_directories_to_scan_state", false);
+        if (!restrictDirectoriesToScan) {
+            return true;
+        }
+        File directory = null;
+        if (file.isFile()) {
+            directory = file.getParentFile();
+        } else {
+            directory = file;
+        }
+        File markerFile = new File(directory, SCAN_MEDIA_MARKER);
+        if (markerFile.exists()) {
+            return true;
+        }
+        File parentDirectory = directory.getParentFile();
+        if (parentDirectory != null) {
+            return shouldScanFileBasedOnDirectory(parentDirectory);
+        } else {
+            return false;
+        }
+    }
+
     private void getDirectoriesMarkedForScanning(List<String> directoriesToScan, File directoryToStartFrom) {
         File[] allFiles = directoryToStartFrom.listFiles();
         if (allFiles == null) {
@@ -565,38 +656,29 @@ public class MsoXposedMod extends XposedModule {
         for (File file : allFiles) {
             if (file.isDirectory()) {
                 File directory = file;
-                File markerFile = new File(directory, ".scanMedia");
+                File markerFile = new File(directory, SCAN_MEDIA_MARKER);
                 if (markerFile.exists()) {
                     Logger.d("Marker file exists in directory {0}", directory);
                     directoriesToScan.add(directory.getAbsolutePath());
+                } else {
+                    getDirectoriesMarkedForScanning(directoriesToScan, directory);
                 }
-                // else {
-                // getDirectoriesMarkedForScanning(directoriesToScan,
-                // directory);
-                // }
             }
         }
     }
 
     private void deleteMediaStoreContent(Context context) throws Exception {
         ContentProviderClient contentProviderClient = context.getContentResolver().acquireContentProviderClient("media");
-        android.net.Uri.Builder builder = android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI.buildUpon();
+        android.net.Uri.Builder builder = android.provider.MediaStore.Files.getContentUri("external").buildUpon();
         Uri uri = builder.appendQueryParameter("deletedata", "false").build();
-        Logger.d("Modified MediaStore.Audio.Media.EXTERNAL_CONTENT_URI is {0}", uri.toString());
-        int deleted = contentProviderClient.delete(uri, null, null);
-        Logger.i("Deleted {0} rows from External Audio Content", deleted);
+        Logger.d("Modified MediaStore.Files external volume URI is {0}", uri.toString());
+        int deletedEntries = contentProviderClient.delete(uri, null, null);
+        Logger.i("Deleted {0} rows from file entries", deletedEntries);
 
-        builder = android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI.buildUpon();
-        uri = builder.appendQueryParameter("deletedata", "false").build();
-        Logger.d("Modified MediaStore.Images.Media.EXTERNAL_CONTENT_URI is {0}", uri.toString());
-        deleted = contentProviderClient.delete(uri, null, null);
-        Logger.i("Deleted {0} rows from External Image Content", deleted);
-
-        builder = android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI.buildUpon();
-        uri = builder.appendQueryParameter("deletedata", "false").build();
-        Logger.d("Modified MediaStore.Video.Media.EXTERNAL_CONTENT_URI is {0}", uri.toString());
-        deleted = contentProviderClient.delete(uri, null, null);
-        Logger.i("Deleted {0} rows from External Video Content", deleted);
+        Notification.Builder notification = createSimpleNotification(context, "Media Scanner Optimizer", "Deleted " + deletedEntries + " entries", null);
+        PendingIntent piSend = buildActionSendPendingIntent(context, "Deleted media store content", "Deleted " + deletedEntries + " entries.");
+        notification.addAction(android.R.drawable.ic_menu_send, "Send", piSend);
+        showNotification(context, notification);
     }
 
     private void triggerMediaScanner(Context context) {
@@ -610,7 +692,7 @@ public class MsoXposedMod extends XposedModule {
         handler.post(new Runnable() {
             @Override
             public void run() {
-                displayToast(text);
+                displayToast(context, text);
             }
         });
     }
