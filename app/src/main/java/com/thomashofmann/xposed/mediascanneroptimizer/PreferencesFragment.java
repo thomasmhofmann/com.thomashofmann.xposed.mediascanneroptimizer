@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Parcel;
 import android.preference.Preference;
 import android.util.Log;
 
@@ -12,6 +13,8 @@ import com.thomashofmann.xposed.lib.Logger;
 import com.thomashofmann.xposed.lib.Paypal;
 import com.thomashofmann.xposed.lib.XposedPreferenceFragment;
 import com.thomashofmann.xposed.mediascanneroptimizer.R;
+
+import java.util.List;
 
 public class PreferencesFragment extends XposedPreferenceFragment {
     static final String ACTION_SCAN_EXTERNAL = "com.thomashofmann.xposed.mediascanneroptimizer.SCAN_EXTERNAL";
@@ -60,12 +63,16 @@ public class PreferencesFragment extends XposedPreferenceFragment {
     }
 
     private void triggerMediaScanner() {
-        Intent intent = new Intent(ACTION_SCAN_EXTERNAL);
+        Intent intent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
+        intent.setData(new Uri.Builder().scheme("file").authority(ACTION_SCAN_EXTERNAL).build());
+        intent.putExtra(ACTION_SCAN_EXTERNAL, true);
         getActivity().sendBroadcast(intent);
     }
 
     private void deleteMediaStoreContent() {
-        Intent intent = new Intent(ACTION_DELETE_MEDIA_STORE_CONTENTS);
+        Intent intent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
+        intent.setData(new Uri.Builder().scheme("file").authority(ACTION_DELETE_MEDIA_STORE_CONTENTS).build());
+        intent.putExtra(ACTION_DELETE_MEDIA_STORE_CONTENTS, true);
         getActivity().sendBroadcast(intent);
     }
 

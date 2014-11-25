@@ -16,6 +16,7 @@ import android.os.Handler;
 import android.os.Process;
 import android.text.format.DateUtils;
 
+import com.thomashofmann.xposed.lib.AfterMethodHook;
 import com.thomashofmann.xposed.lib.BeforeMethodHook;
 import com.thomashofmann.xposed.lib.Logger;
 import com.thomashofmann.xposed.lib.MethodHook;
@@ -42,10 +43,10 @@ public class MsoXposedMod extends XposedModule {
     private static final String SCAN_MUSIC_MARKER = ".scanMusic";
     private static final String SCAN_PICTURES_MARKER = ".scanPictures";
     private static final String SCAN_VIDEO_MARKER = ".scanVideo";
+    private static final String USER_INITIATED_SCAN = "userInitiatedScan";
     private static final int FOREGROUND_NOTIFICATION = 1;
     private static final int SCAN_FINISHED_NOTIFICATION = 10;
 
-    private Map<Integer, Integer> startIdsByPid = new HashMap<Integer, Integer>();
     private Map<String, Intent> intentsByVolume = new HashMap<String, Intent>();
     private Map<Integer, String> volumesByStartId = new HashMap<Integer, String>();
     private int numberOfStartCommandsForExternalVolume;
@@ -60,7 +61,6 @@ public class MsoXposedMod extends XposedModule {
     private int scanFinishedCounter = 0;
     private static Handler handler;
     private Service mediaScannerService;
-    private boolean broadcastReceiverRegistered;
 
     private enum MediaFileTypeEnum {
         music, video, picture
@@ -69,41 +69,6 @@ public class MsoXposedMod extends XposedModule {
     private enum TreatAsMediaFileEnum {
         media_file_true, media_file_false, media_file_default
     }
-
-    private BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            Logger.i("Intent {0} received.", intent);
-            if (intent.getAction().equals(PreferencesFragment.ACTION_SCAN_EXTERNAL)) {
-                Logger.i("Request to rescan external volume.");
-                if (intentsByVolume.containsKey("external")) {
-                    displayToastUsingHandler(context, "A scan for the external volume is already in progress. Please try again later.");
-                } else {
-                    Bundle serviceExtras = new Bundle();
-                    serviceExtras.putString("volume", "external");
-                    serviceExtras.putBoolean("userInitiatedScan", true);
-                    Intent serviceIntent = new Intent();
-                    ComponentName componentName = new ComponentName("com.android.providers.media", "com.android.providers.media.MediaScannerService");
-                    serviceIntent.setComponent(componentName);
-                    serviceIntent.putExtras(serviceExtras);
-                    context.startService(serviceIntent);
-                }
-            } else if (intent.getAction().equals(PreferencesFragment.ACTION_DELETE_MEDIA_STORE_CONTENTS)) {
-                Logger.i("Request to delete MediaStore content");
-                if (intentsByVolume.containsKey("external")) {
-                    displayToastUsingHandler(context, "Could not delete media store contents for external volume because a scan is in progress. Please try again later.");
-                } else {
-                    try {
-                        deleteMediaStoreContent(context);
-                        createSimpleNotification(context, "Deleted media store content.", null, null);
-                    } catch (Exception e) {
-                        UnexpectedException unexpectedException = new UnexpectedException("Failed to delete media store contents", e);
-                        createAndShowNotification(context, "Media Scanner Optimizer", unexpectedException);
-                    }
-                }
-            }
-        }
-    };
 
     private static Map<String, List<MediaFileTypeEnum>> mediaFilesToConsiderByDirectory = new HashMap<String, List<MediaFileTypeEnum>>();
 
@@ -183,6 +148,7 @@ public class MsoXposedMod extends XposedModule {
  *
  * The MediaScanner class is not thread-safe, so it should only be used in a single threaded manner.
  */
+
         hookMethod("com.android.providers.media.MediaScannerReceiver",
                 getLoadPackageParam().classLoader, "onReceive", Context.class, Intent.class,
                 new BeforeMethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
@@ -193,9 +159,45 @@ public class MsoXposedMod extends XposedModule {
                         Logger.i("Intent {0} received.", intent);
                         Bundle extras = intent.getExtras();
                         Logger.i("Extras are {0}", extras);
+                        Context context = (Context) methodHookParam.args[0];
+
+                        getSettings().reload();
+
+                        if (intent.getAction().equals(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE)) {
+                            // we piggyback on this event because it can be triggered easily
+                            if(extras != null && extras.getBoolean(PreferencesFragment.ACTION_SCAN_EXTERNAL)) {
+                                Logger.i("User initiated request to rescan external volume.");
+                                if (intentsByVolume.containsKey("external")) {
+                                    displayToastUsingHandler(context, "A scan for the external volume is already in progress. Please try again later.");
+                                } else {
+                                    Bundle serviceExtras = new Bundle();
+                                    serviceExtras.putString("volume", "external");
+                                    serviceExtras.putBoolean(USER_INITIATED_SCAN, true);
+                                    Intent serviceIntent = new Intent();
+                                    ComponentName componentName = new ComponentName("com.android.providers.media", "com.android.providers.media.MediaScannerService");
+                                    serviceIntent.setComponent(componentName);
+                                    serviceIntent.putExtras(serviceExtras);
+                                    context.startService(serviceIntent);
+                                }
+                                methodHookParam.setResult(null);
+                            } else if(extras != null && extras.getBoolean(PreferencesFragment.ACTION_DELETE_MEDIA_STORE_CONTENTS)) {
+                                Logger.i("Request to delete MediaStore content");
+                                if (intentsByVolume.containsKey("external")) {
+                                    displayToastUsingHandler(context, "Could not delete media store contents for external volume because a scan is in progress. Please try again later.");
+                                } else {
+                                    try {
+                                        deleteMediaStoreContent(context);
+                                        createSimpleNotification(context, "Deleted media store content.", null, null);
+                                    } catch (Exception e) {
+                                        UnexpectedException unexpectedException = new UnexpectedException("Failed to delete media store contents", e);
+                                        createAndShowNotification(context, "Media Scanner Optimizer", unexpectedException);
+                                    }
+                                }
+                                methodHookParam.setResult(null);
+                            }
+                        }
                     }
                 }));
-
 
         hookMethod("com.android.providers.media.MediaScannerService",
                 getLoadPackageParam().classLoader, "onStartCommand", Intent.class, int.class, int.class,
@@ -214,21 +216,19 @@ public class MsoXposedMod extends XposedModule {
                                 intent, startId, filePathInIntentExtra, mimeTypeInIntentExtra, volumeInIntentExtra,
                                 mediaScannerService);
 
-
-                        startIdsByPid.put(Process.myPid(), startId);
-                        Logger.d("startIdsByPid is {0}", startIdsByPid);
-
-                        installBroadcastReceiverOnce(mediaScannerService);
-
-                        getSettings().reload();
-
                         if (volumeInIntentExtra != null) {
                             if ("external".equals(volumeInIntentExtra)) {
+                                if(!getSettings().getPreferences().getBoolean("pref_run_automatically_state", true)
+                                        && !(extras != null && extras.getBoolean(USER_INITIATED_SCAN))) {
+                                    Logger.i("Not running media scanner for external volume. It is configured to not run automatically");
+                                    methodHookParam.setResult(Service.START_NOT_STICKY);
+                                    return;
+                                }
                                 numberOfStartCommandsForExternalVolume++;
                             }
 
                             if (intentsByVolume.containsKey(volumeInIntentExtra)) {
-                                if (getSettings().getPreferences().getBoolean("pref_prevent_repetetive_scans_state", true)) {
+                                if (getSettings().getPreferences().getBoolean("pref_prevent_repetitive_scans_state", true)) {
                                     /*
                                      * don't queue another run for the volume
 									 * that will already be scanned
@@ -356,7 +356,7 @@ public class MsoXposedMod extends XposedModule {
             try {
                 Logger.i("Cannot find method scanFile will now try to hook scanFileOrDirectory.");
                 // try Cyanogenmod method
-                XposedHelpers.findAndHookMethod("com.android.providers.media.MediaScannerService",
+                hookMethod("com.android.providers.media.MediaScannerService",
                         getLoadPackageParam().classLoader, "scanFileOrDirectory", String.class, String.class,
                         new BeforeMethodHook(hookScanFileInMediaScannerServiceCode));
             } catch (NoSuchMethodError e2) {
@@ -528,15 +528,6 @@ public class MsoXposedMod extends XposedModule {
                     }));
         } catch (ClassNotFoundException e) {
             throw new UnexpectedException("Failed to load a class", e);
-        }
-    }
-
-    private void installBroadcastReceiverOnce(Context context) {
-        if (!broadcastReceiverRegistered) {
-            IntentFilter filter = new IntentFilter(PreferencesFragment.ACTION_SCAN_EXTERNAL);
-            filter.addAction(PreferencesFragment.ACTION_DELETE_MEDIA_STORE_CONTENTS);
-            context.registerReceiver(broadcastReceiver, filter, "com.thomashofmann.xposed.mediascanneroptimizer.permission.MEDIA_STORE_OPERATIONS", null);
-            broadcastReceiverRegistered = true;
         }
     }
 

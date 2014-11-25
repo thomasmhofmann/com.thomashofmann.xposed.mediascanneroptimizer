@@ -6,11 +6,11 @@
         android:summary="@string/pref_donate_summary"/>
     <CheckBoxPreference
         android:defaultValue="true"
-        android:key="pref_prevent_repetetive_scans_state"
+        android:key="pref_prevent_repetitive_scans_state"
         android:persistent="true"
-        android:summaryOff="@string/pref_prevent_repetetive_scans_disable_summary"
-        android:summaryOn="@string/pref_prevent_repetetive_scans_enabled_summary"
-        android:title="@string/pref_prevent_repetetive_scans_state_title" />
+        android:summaryOff="@string/pref_prevent_repetitive_scans_disable_summary"
+        android:summaryOn="@string/pref_prevent_repetitive_scans_enabled_summary"
+        android:title="@string/pref_prevent_repetitive_scans_state_title" />
     <CheckBoxPreference
         android:defaultValue="true"
         android:key="pref_run_media_scanner_as_foreground_service_state"
@@ -39,6 +39,13 @@
         android:summaryOff="@string/pref_restrict_to_certain_media_types_disable_summary"
         android:summaryOn="@string/pref_restrict_to_certain_media_types_enabled_summary"
         android:title="@string/pref_restrict_to_certain_media_types_title" />
+    <CheckBoxPreference
+        android:defaultValue="true"
+        android:key="pref_run_automatically_state"
+        android:persistent="true"
+        android:summaryOff="@string/pref_run_automatically_disable_summary"
+        android:summaryOn="@string/pref_run_automatically_enabled_summary"
+        android:title="@string/pref_run_automatically_title" />
     <CheckBoxPreference
         android:defaultValue="true"
         android:key="pref_show_results_state"

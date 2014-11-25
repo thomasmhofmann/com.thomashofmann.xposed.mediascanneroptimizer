@@ -13,9 +13,9 @@
     <string name="pref_log_to_xposed_log_disabled_summary">No log message will be written to the Xposed log</string>
     <string name="pref_log_to_xposed_log_enabled_summary">Logging to Xposed log</string>
 
-    <string name="pref_prevent_repetetive_scans_state_title">Repetitive Scans</string>
-    <string name="pref_prevent_repetetive_scans_enabled_summary">Prevent repetitive scans (suggested)</string>
-    <string name="pref_prevent_repetetive_scans_disable_summary">Allow repetitive scans (consumes more time and battery)</string>
+    <string name="pref_prevent_repetitive_scans_state_title">Repetitive Scans</string>
+    <string name="pref_prevent_repetitive_scans_enabled_summary">Prevent repetitive scans (suggested)</string>
+    <string name="pref_prevent_repetitive_scans_disable_summary">Allow repetitive scans (consumes more time and battery)</string>
     
     <string name="pref_run_media_scanner_as_foreground_service_state_title">Service Importance</string>
     <string name="pref_run_media_scanner_as_foreground_service_enabled_summary">Run as foreground service (suggested)</string>
@@ -33,6 +33,10 @@
     <string name="pref_restrict_to_certain_media_types_enabled_summary">Restrict scanning for media types based upon the existence of .scanMusic, .scanVideo and .scanPictures files.</string>
     <string name="pref_restrict_to_certain_media_types_disable_summary">Scan all media types</string>
 
+    <string name="pref_run_automatically_disable_summary">The media scanner will not run automatically, only when triggered manually</string>
+    <string name="pref_run_automatically_enabled_summary">Runs the media scanner automatically (default behavior / suggested)</string>
+    <string name="pref_run_automatically_title">Run automatically</string>
+
     <string name="pref_show_results_title">Result Notifications</string>
     <string name="pref_show_results_enabled_summary">Show results/durations for a scan using a notification</string>
     <string name="pref_show_results_disable_summary">Do not show any notifications when a scan is finished</string>
@@ -43,6 +47,4 @@
     <string name="pref_delete_media_store_title">Delete Media Store Contents</string>
     <string name="pref_delete_media_store_summary">Tap to delete existing entries in the media store (improves scan times when scans are restricted to certain directories or media types). Will not work in case a scan is currently in progress. This might take some seconds. A notification will be shown when the entries have been deleted.</string>
 
-    <string name="perm_label_media_store_operations">Request Media Store Operations</string>
-    <string name="perm_desc_media_store_operations">Permission to mess with the media store, e.g. rescan, delete media store contents.</string>
 </resources>
