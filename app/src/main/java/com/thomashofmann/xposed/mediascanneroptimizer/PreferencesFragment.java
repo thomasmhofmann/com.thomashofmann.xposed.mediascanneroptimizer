@@ -17,6 +17,7 @@ import com.thomashofmann.xposed.mediascanneroptimizer.R;
 import java.util.List;
 
 public class PreferencesFragment extends XposedPreferenceFragment {
+    static final String PREF_CHANGE_ACTION = "pref-xmso";
     static final String ACTION_SCAN_EXTERNAL = "com.thomashofmann.xposed.mediascanneroptimizer.SCAN_EXTERNAL";
     static final String ACTION_DELETE_MEDIA_STORE_CONTENTS = "com.thomashofmann.xposed.mediascanneroptimizer.DELETE_MEDIA_STORE_CONTENTS";
 
@@ -54,7 +55,7 @@ public class PreferencesFragment extends XposedPreferenceFragment {
 
     @Override
     protected String getPreferencesChangedAction() {
-        return "pref-xmso";
+        return PREF_CHANGE_ACTION;
     }
 
     private void triggerDonate() {

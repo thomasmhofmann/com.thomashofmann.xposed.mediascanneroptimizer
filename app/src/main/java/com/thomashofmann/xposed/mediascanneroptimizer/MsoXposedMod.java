@@ -3,12 +3,12 @@ package com.thomashofmann.xposed.mediascanneroptimizer;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.Service;
-import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.ContentProviderClient;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
+import android.content.res.Resources;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -16,7 +16,6 @@ import android.os.Handler;
 import android.os.Process;
 import android.text.format.DateUtils;
 
-import com.thomashofmann.xposed.lib.AfterMethodHook;
 import com.thomashofmann.xposed.lib.BeforeMethodHook;
 import com.thomashofmann.xposed.lib.Logger;
 import com.thomashofmann.xposed.lib.MethodHook;
@@ -37,20 +36,19 @@ import de.robv.android.xposed.XposedHelpers;
 
 public class MsoXposedMod extends XposedModule {
     private static final String[] TARGET_PACKAGE_NAMES = new String[]{"com.android.providers.media"};
-    private static final String PREF_CHANGE_ACTION = "pref-xmso";
-    private static final String TAG = "xmso";
     private static final String SCAN_MEDIA_MARKER = ".scanMedia";
     private static final String SCAN_MUSIC_MARKER = ".scanMusic";
     private static final String SCAN_PICTURES_MARKER = ".scanPictures";
     private static final String SCAN_VIDEO_MARKER = ".scanVideo";
     private static final String USER_INITIATED_SCAN = "userInitiatedScan";
     private static final int FOREGROUND_NOTIFICATION = 1;
-    private static final int SCAN_FINISHED_NOTIFICATION = 10;
 
     private Map<String, Intent> intentsByVolume = new HashMap<String, Intent>();
     private Map<Integer, String> volumesByStartId = new HashMap<Integer, String>();
     private int numberOfStartCommandsForExternalVolume;
     private int numberOfSuccessfulRunsForExternalVolume;
+    private long processDirectoryStartTime;
+    private long processDirectoryEndTime;
     private long prescanStartTime;
     private long prescanEndTime;
     private long scanTime;
@@ -58,9 +56,8 @@ public class MsoXposedMod extends XposedModule {
     private long postscanEndTime;
     private long totalStartTime;
     private long totalEndTime;
-    private int scanFinishedCounter = 0;
     private static Handler handler;
-    private Service mediaScannerService;
+    private Context mediaScannerContext;
 
     private enum MediaFileTypeEnum {
         music, video, picture
@@ -94,7 +91,7 @@ public class MsoXposedMod extends XposedModule {
 
     @Override
     protected String getPreferencesChangedAction() {
-        return PREF_CHANGE_ACTION;
+        return PreferencesFragment.PREF_CHANGE_ACTION;
     }
 
     @Override
@@ -164,8 +161,10 @@ public class MsoXposedMod extends XposedModule {
                         getSettings().reload();
 
                         if (intent.getAction().equals(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE)) {
-                            // we piggyback on this event because it can be triggered easily
-                            if(extras != null && extras.getBoolean(PreferencesFragment.ACTION_SCAN_EXTERNAL)) {
+                            /*
+                             * piggyback on this event because it can be triggered easily
+                             */
+                            if (extras != null && extras.getBoolean(PreferencesFragment.ACTION_SCAN_EXTERNAL)) {
                                 Logger.i("User initiated request to rescan external volume.");
                                 if (intentsByVolume.containsKey("external")) {
                                     displayToastUsingHandler(context, "A scan for the external volume is already in progress. Please try again later.");
@@ -180,7 +179,7 @@ public class MsoXposedMod extends XposedModule {
                                     context.startService(serviceIntent);
                                 }
                                 methodHookParam.setResult(null);
-                            } else if(extras != null && extras.getBoolean(PreferencesFragment.ACTION_DELETE_MEDIA_STORE_CONTENTS)) {
+                            } else if (extras != null && extras.getBoolean(PreferencesFragment.ACTION_DELETE_MEDIA_STORE_CONTENTS)) {
                                 Logger.i("Request to delete MediaStore content");
                                 if (intentsByVolume.containsKey("external")) {
                                     displayToastUsingHandler(context, "Could not delete media store contents for external volume because a scan is in progress. Please try again later.");
@@ -199,138 +198,144 @@ public class MsoXposedMod extends XposedModule {
                     }
                 }));
 
-        hookMethod("com.android.providers.media.MediaScannerService",
-                getLoadPackageParam().classLoader, "onStartCommand", Intent.class, int.class, int.class,
-                new BeforeMethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
-                    @Override
-                    public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
-                        handler = new Handler();
-                        Intent intent = (Intent) methodHookParam.args[0];
-                        Bundle extras = intent.getExtras();
-                        String filePathInIntentExtra = extras != null ? extras.getString("filepath") : null;
-                        String mimeTypeInIntentExtra = extras != null ? extras.getString("mimetype") : null;
-                        String volumeInIntentExtra = extras != null ? extras.getString("volume") : null;
-                        mediaScannerService = (Service) methodHookParam.thisObject;
-                        int startId = (Integer) methodHookParam.args[2];
-                        Logger.i("onStartCommand is called with Intent {0}, startId {1}, filepath {2}, mimetype {3} and volume {4} on {5}",
-                                intent, startId, filePathInIntentExtra, mimeTypeInIntentExtra, volumeInIntentExtra,
-                                mediaScannerService);
+        Procedure1<XC_MethodHook.MethodHookParam> hookBeforeOnStartCommandInMediaScannerServiceCode = new Procedure1<XC_MethodHook.MethodHookParam>() {
+            @Override
+            public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                Service service = (Service) methodHookParam.thisObject;
 
-                        if (volumeInIntentExtra != null) {
-                            if ("external".equals(volumeInIntentExtra)) {
-                                if(!getSettings().getPreferences().getBoolean("pref_run_automatically_state", true)
-                                        && !(extras != null && extras.getBoolean(USER_INITIATED_SCAN))) {
-                                    Logger.i("Not running media scanner for external volume. It is configured to not run automatically");
-                                    methodHookParam.setResult(Service.START_NOT_STICKY);
-                                    return;
-                                }
-                                numberOfStartCommandsForExternalVolume++;
-                            }
+                handler = new Handler();
+                Intent intent = (Intent) methodHookParam.args[0];
+                Bundle extras = intent.getExtras();
+                String filePathInIntentExtra = extras != null ? extras.getString("filepath") : null;
+                String mimeTypeInIntentExtra = extras != null ? extras.getString("mimetype") : null;
+                String volumeInIntentExtra = extras != null ? extras.getString("volume") : null;
 
-                            if (intentsByVolume.containsKey(volumeInIntentExtra)) {
-                                if (getSettings().getPreferences().getBoolean("pref_prevent_repetitive_scans_state", true)) {
-                                    /*
-                                     * don't queue another run for the volume
-									 * that will already be scanned
-									 */
-                                    Logger.i("Early return from onStartCommand because scan for volumen {0} is already scheduled",
-                                            volumeInIntentExtra);
-                                }
-                                methodHookParam.setResult(Service.START_NOT_STICKY);
-                            } else {
-                                intentsByVolume.put(volumeInIntentExtra, intent);
-                                volumesByStartId.put(startId, volumeInIntentExtra);
-                            }
+                int startId = (Integer) methodHookParam.args[2];
+                Logger.i("onStartCommand is called with Intent {0}, startId {1}, filepath {2}, mimetype {3} and volume {4} on {5}",
+                        intent, startId, filePathInIntentExtra, mimeTypeInIntentExtra, volumeInIntentExtra, service);
+
+                if (volumeInIntentExtra != null) {
+                    if ("external".equals(volumeInIntentExtra)) {
+                        if (!getSettings().getPreferences().getBoolean("pref_run_automatically_state", true)
+                                && !(extras != null && extras.getBoolean(USER_INITIATED_SCAN))) {
+                            Logger.i("Not running media scanner for external volume. It is configured to not run automatically");
+                            methodHookParam.setResult(Service.START_NOT_STICKY);
+                            return;
                         }
-                        Logger.i("Number of start commands for external volume is {0}",
-                                numberOfStartCommandsForExternalVolume);
-                        Logger.i("Number of successful runs for external volume is {0}",
-                                numberOfSuccessfulRunsForExternalVolume);
-                    }
-                }));
-
-        hookMethod("com.android.providers.media.MediaScannerService",
-                getLoadPackageParam().classLoader, "scan", String[].class, String.class,
-                new MethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
-                    @Override
-                    public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
-                        String[] directories = (String[]) methodHookParam.args[0];
-                        String volumeName = (String) methodHookParam.args[1];
-                        Logger.i("scan is called for directories {0} on volume {1}", Arrays.toString(directories),
-                                volumeName);
-
-                        if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
-                            Logger.i("Set service to foreground");
-                            Notification.Builder notification = createSimpleNotification(mediaScannerService, "Media Scanner Optimizer", "Processing volume " + volumeName, null);
-                            mediaScannerService.startForeground(FOREGROUND_NOTIFICATION, notification.build());
-                        }
-
-                        if (volumeName.equals("external")
-                                && getSettings().getPreferences().getBoolean("pref_restrict_directories_to_scan_state", false)) {
-                            List<String> directoriesToScan = new ArrayList<String>();
-                            for (String originalDirectoryString : directories) {
-                                File originalDirectory = new File(originalDirectoryString);
-                                if (originalDirectory.exists() && originalDirectory.isDirectory()) {
-                                    long start = System.currentTimeMillis();
-                                    Logger.i("Searching directories to scan in {0}", originalDirectoryString);
-                                    getDirectoriesMarkedForScanning(directoriesToScan, originalDirectory);
-                                    long s = System.currentTimeMillis() - start;
-                                    String duration = formatDuration(s);
-                                    Logger.i("Finished searching directories to scan in {0}. Time: {1}",
-                                            originalDirectoryString, duration);
-                                }
-                            }
-                            Logger.i("The following directories will be scanned by MediaScanner: {0}",
-                                    directoriesToScan);
-                            methodHookParam.args[0] = directoriesToScan.toArray(new String[directoriesToScan.size()]);
-                        } else {
-                            Logger.i("The following directories will be scanned by MediaScanner: {0}",
-                                    Arrays.toString(directories));
-                        }
-                    }
-                }, new Procedure1<XC_MethodHook.MethodHookParam>() {
-                    @Override
-                    public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
-                        String volumeName = (String) methodHookParam.args[1];
-                        Object thisObject = methodHookParam.thisObject;
-                        Service service = (Service) thisObject;
-                        Logger.i("scan(String[] directories, String volumeName) has finished scanning {0}",
-                                volumeName);
-                        service.stopForeground(true);
-                        if (getSettings().getPreferences().getBoolean("pref_show_results_state", true)) {
-                            reportDurations(service, volumeName);
-                        }
+                        numberOfStartCommandsForExternalVolume++;
                     }
 
-                    private void reportDurations(Context context, String volumeName) {
-                        long prescanTime = prescanEndTime - prescanStartTime;
-                        long postscanTime = postscanEndTime - postscanStartTime;
-
-                        String prescanDuration = formatDuration(prescanTime);
-                        String scanDuration = formatDuration(scanTime);
-                        String postscanDuration = formatDuration(postscanTime);
-
-                        String scanDirectoriesDuration = formatDuration(totalEndTime - totalStartTime);
-                        Notification.Builder notification = createInboxStyleNotification(context, "Media Scanner Optimizer",
-                                "Scan directories time " + scanDirectoriesDuration,
-                                "Volume " + volumeName + " (Expand for details)",
-                                "Volume " + volumeName,
-                                "Pre-scan: " + prescanDuration,
-                                "Scan: " + scanDuration,
-                                "Post-scan: " + postscanDuration
-                        );
-
-                        Intent donateIntent = Paypal.createDonationIntent(context, "email@thomashofmann.com", "XMSO", "EUR");
-                        PendingIntent piDonate = PendingIntent.getActivity(context, 0, donateIntent, 0);
-
-                        notification.addAction(android.R.drawable.ic_menu_add, "Donate", piDonate);
-                        notification.setContentIntent(piDonate);
-
-                        PendingIntent piSend = buildActionSendPendingIntent(context, "Volume " + volumeName + " results", "Pre-scan: " + prescanDuration, "Scan: " + scanDuration, "Post-scan: " + postscanDuration);
-                        notification.addAction(android.R.drawable.ic_menu_send, "Send", piSend);
-                        showNotification(context, notification);
+                    if (intentsByVolume.containsKey(volumeInIntentExtra)) {
+                        if (getSettings().getPreferences().getBoolean("pref_prevent_repetitive_scans_state", true)) {
+                            /*
+                             * don't queue another run for the volume that will already be scanned
+                             */
+                            Logger.i("Early return from onStartCommand because scan for volumen {0} is already scheduled",
+                                    volumeInIntentExtra);
+                        }
+                        methodHookParam.setResult(Service.START_NOT_STICKY);
+                    } else {
+                        intentsByVolume.put(volumeInIntentExtra, intent);
+                        volumesByStartId.put(startId, volumeInIntentExtra);
                     }
-                }));
+                    Logger.i("Number of start commands for external volume is {0}",
+                            numberOfStartCommandsForExternalVolume);
+                    Logger.i("Number of successful runs for external volume is {0}",
+                            numberOfSuccessfulRunsForExternalVolume);
+                }
+            }
+        };
+
+        try {
+            /*
+             * HTC specific, hook both services
+             */
+            getLoadPackageParam().classLoader.loadClass("com.android.providers.media.MediaScannerServiceEx");
+            Logger.i("Installing HTC specific hooks.");
+            hookMethod("com.android.providers.media.MediaScannerService",
+                    getLoadPackageParam().classLoader, "onStartCommand", Intent.class, int.class, int.class,
+                    new BeforeMethodHook(hookBeforeOnStartCommandInMediaScannerServiceCode));
+            hookMethod("com.android.providers.media.MediaScannerServiceEx",
+                    getLoadPackageParam().classLoader, "onStartCommand", Intent.class, int.class, int.class,
+                    new BeforeMethodHook(hookBeforeOnStartCommandInMediaScannerServiceCode));
+        } catch (ClassNotFoundException e) {
+            hookMethod("com.android.providers.media.MediaScannerService",
+                    getLoadPackageParam().classLoader, "onStartCommand", Intent.class, int.class, int.class,
+                    new BeforeMethodHook(hookBeforeOnStartCommandInMediaScannerServiceCode));
+        }
+
+
+        Procedure1<XC_MethodHook.MethodHookParam> hookBeforeScanInMediaScannerServiceCode = new Procedure1<XC_MethodHook.MethodHookParam>() {
+            @Override
+            public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                Service service = (Service) methodHookParam.thisObject;
+
+                String[] directories = (String[]) methodHookParam.args[0];
+                String volumeName = (String) methodHookParam.args[1];
+                Logger.i("scan is called for directories {0} on volume {1}", Arrays.toString(directories), volumeName);
+
+                if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
+                    Logger.i("Set service to foreground");
+                    Notification.Builder notification = createSimpleNotification(service, "Media Scanner Optimizer", "Processing volume " + volumeName, null);
+                    service.startForeground(FOREGROUND_NOTIFICATION, notification.build());
+                }
+
+                if (volumeName.equals("external")
+                        && getSettings().getPreferences().getBoolean("pref_restrict_directories_to_scan_state", false)) {
+                    List<String> directoriesToScan = new ArrayList<String>();
+                    for (String originalDirectoryString : directories) {
+                        File originalDirectory = new File(originalDirectoryString);
+                        if (originalDirectory.exists() && originalDirectory.isDirectory()) {
+                            long start = System.currentTimeMillis();
+                            Logger.i("Searching directories to scan in {0}", originalDirectoryString);
+                            getDirectoriesMarkedForScanning(directoriesToScan, originalDirectory);
+                            long s = System.currentTimeMillis() - start;
+                            String duration = formatDuration(s);
+                            Logger.i("Finished searching directories to scan in {0}. Time: {1}",
+                                    originalDirectoryString, duration);
+                        }
+                    }
+                    Logger.i("The following directories will be scanned by MediaScanner: {0}",
+                            directoriesToScan);
+                    methodHookParam.args[0] = directoriesToScan.toArray(new String[directoriesToScan.size()]);
+                } else {
+                    Logger.i("The following directories will be scanned by MediaScanner: {0}",
+                            Arrays.toString(directories));
+                }
+            }
+        };
+
+        Procedure1<XC_MethodHook.MethodHookParam> hookAfterScanInMediaScannerServiceCode = new Procedure1<XC_MethodHook.MethodHookParam>() {
+            @Override
+            public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                String volumeName = (String) methodHookParam.args[1];
+                Object thisObject = methodHookParam.thisObject;
+                Service service = (Service) thisObject;
+                Logger.i("scan(String[] directories, String volumeName) has finished scanning {0}",
+                        volumeName);
+                service.stopForeground(true);
+                if (getSettings().getPreferences().getBoolean("pref_show_results_state", true)) {
+                    reportDurations(service, volumeName);
+                }
+            }
+        };
+
+
+        try {
+            /*
+             * HTC specific
+             */
+            getLoadPackageParam().classLoader.loadClass("com.android.providers.media.MediaScannerServiceEx");
+            Logger.i("Installing HTC specific hook.");
+            hookMethod("com.android.providers.media.MediaScannerServiceEx",
+                    getLoadPackageParam().classLoader, "scan", String[].class, String.class, boolean.class, int.class, String[].class,
+                    new MethodHook(hookBeforeScanInMediaScannerServiceCode, hookAfterScanInMediaScannerServiceCode));
+        } catch (ClassNotFoundException e) {
+            hookMethod("com.android.providers.media.MediaScannerService",
+                    getLoadPackageParam().classLoader, "scan", String[].class, String.class,
+                    new MethodHook(hookBeforeScanInMediaScannerServiceCode, hookAfterScanInMediaScannerServiceCode));
+        }
+
 
         Procedure1<XC_MethodHook.MethodHookParam> hookScanFileInMediaScannerServiceCode = new Procedure1<XC_MethodHook.MethodHookParam>() {
             @Override
@@ -348,32 +353,24 @@ public class MsoXposedMod extends XposedModule {
             }
         };
 
-        try {
+        boolean success = hookMethod(false, "com.android.providers.media.MediaScannerService",
+                getLoadPackageParam().classLoader, "scanFile", String.class, String.class,
+                new BeforeMethodHook(hookScanFileInMediaScannerServiceCode));
+        if (!success) {
+            Logger.i("Cannot find method scanFile will now try to hook scanFileOrDirectory.");
+            // try Cyanogenmod method
             hookMethod("com.android.providers.media.MediaScannerService",
-                    getLoadPackageParam().classLoader, "scanFile", String.class, String.class,
+                    getLoadPackageParam().classLoader, "scanFileOrDirectory", String.class, String.class,
                     new BeforeMethodHook(hookScanFileInMediaScannerServiceCode));
-        } catch (NoSuchMethodError e) {
-            try {
-                Logger.i("Cannot find method scanFile will now try to hook scanFileOrDirectory.");
-                // try Cyanogenmod method
-                hookMethod("com.android.providers.media.MediaScannerService",
-                        getLoadPackageParam().classLoader, "scanFileOrDirectory", String.class, String.class,
-                        new BeforeMethodHook(hookScanFileInMediaScannerServiceCode));
-            } catch (NoSuchMethodError e2) {
-                Logger.w("Cannot find method scanFileOrDirectory.");
-            }
         }
-
 
         hookMethod("android.app.Service", getLoadPackageParam().classLoader, "stopSelf", int.class,
                 new BeforeMethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
                     @Override
                     public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
-                        Object thisObject = methodHookParam.thisObject;
-                        if (thisObject.getClass().getCanonicalName()
-                                .equals("com.android.providers.media.MediaScannerService")) {
-                            Logger.i("stopSelf is called on MediaScannerService");
-
+                        Service service = (Service) methodHookParam.thisObject;
+                        if (service.getClass().getPackage().getName().startsWith("com.android.providers.media")) {
+                            Logger.i("stopSelf is called on {0}", service.getClass().toString());
                             Integer startId = (Integer) methodHookParam.args[0];
                             String volumeName = volumesByStartId.get(startId);
                             if (volumeName != null) {
@@ -444,6 +441,7 @@ public class MsoXposedMod extends XposedModule {
                 new BeforeMethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
                     @Override
                     public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                        mediaScannerContext = (Context) methodHookParam.args[0];
                         if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_with_background_thread_priority_state", true)) {
                             Logger.i("Changing thread priority in MediaScanner constructor");
                             Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
@@ -467,47 +465,55 @@ public class MsoXposedMod extends XposedModule {
                             }
                         }));
 
-        hookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "prescan",
-                String.class, boolean.class, new MethodHook(
-                        new Procedure1<XC_MethodHook.MethodHookParam>() {
-                            @Override
-                            public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
-                                Logger.d("In android.media.MediaScanner#processDirectory prescan");
-                                prescanStartTime = System.currentTimeMillis();
-                            }
-                        },
-                        new Procedure1<XC_MethodHook.MethodHookParam>() {
-                            @Override
-                            public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
-                                prescanEndTime = System.currentTimeMillis();
-                            }
-                        }));
+
+        Procedure1<XC_MethodHook.MethodHookParam> hookBeforePrescanInInMediaScannerCode = new Procedure1<XC_MethodHook.MethodHookParam>() {
+            @Override
+            public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                Logger.d("In android.media.MediaScanner#processDirectory prescan");
+                prescanStartTime = System.currentTimeMillis();
+            }
+        };
+
+        Procedure1<XC_MethodHook.MethodHookParam> hookAfterPrescanInInMediaScannerCode = new Procedure1<XC_MethodHook.MethodHookParam>() {
+            @Override
+            public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                prescanEndTime = System.currentTimeMillis();
+            }
+        };
+
+
+        success = hookMethod(false, "android.media.MediaScanner", getLoadPackageParam().classLoader, "prescan",
+                String.class, boolean.class, new MethodHook(hookBeforePrescanInInMediaScannerCode, hookAfterPrescanInInMediaScannerCode));
+        if (!success) {
+            /*
+             * try HTC variant
+             */
+            hookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "prescan",
+                    String.class, boolean.class, int.class, boolean.class, new MethodHook(hookBeforePrescanInInMediaScannerCode, hookAfterPrescanInInMediaScannerCode));
+        }
 
         Class mediaScannerClientClass = null;
         try {
             mediaScannerClientClass = getLoadPackageParam().classLoader.loadClass("android.media.MediaScannerClient");
             hookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "processDirectory",
-                    String.class, mediaScannerClientClass, new XC_MethodHook() {
-                        private long start;
-                        private long end;
-
+                    String.class, mediaScannerClientClass, new MethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
                         @Override
-                        protected void beforeHookedMethod(MethodHookParam methodHookParam) throws Throwable {
+                        public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
                             Logger.d("In android.media.MediaScanner#processDirectory beforeHookedMethod");
                             if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
                                 String path = (String) methodHookParam.args[0];
-                                Notification.Builder notification = createSimpleNotification(mediaScannerService, "Media Scanner Optimizer", "Scanning " + path, null);
-                                getNotificationManager(mediaScannerService).notify(FOREGROUND_NOTIFICATION, notification.build());
+                                Notification.Builder notification = createSimpleNotification(mediaScannerContext, "Media Scanner Optimizer", "Scanning " + path, null);
+                                getNotificationManager(mediaScannerContext).notify(FOREGROUND_NOTIFICATION, notification.build());
                             }
-                            start = System.currentTimeMillis();
+                            processDirectoryStartTime = System.currentTimeMillis();
                         }
-
+                    }, new Procedure1<XC_MethodHook.MethodHookParam>() {
                         @Override
-                        protected void afterHookedMethod(MethodHookParam methodHookParam) throws Throwable {
-                            end = System.currentTimeMillis();
-                            scanTime = scanTime + (end - start);
+                        public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                            processDirectoryEndTime = System.currentTimeMillis();
+                            scanTime = scanTime + (processDirectoryEndTime - processDirectoryStartTime);
                         }
-                    });
+                    }));
 
             hookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "postscan",
                     String[].class, new MethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
@@ -515,8 +521,8 @@ public class MsoXposedMod extends XposedModule {
                         public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
                             Logger.d("In android.media.MediaScanner#processDirectory prescan");
                             if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
-                                Notification.Builder notification = createSimpleNotification(mediaScannerService, "Media Scanner Optimizer", "Postscan", null);
-                                getNotificationManager(mediaScannerService).notify(FOREGROUND_NOTIFICATION, notification.build());
+                                Notification.Builder notification = createSimpleNotification(mediaScannerContext, "Media Scanner Optimizer", "Postscan", null);
+                                getNotificationManager(mediaScannerContext).notify(FOREGROUND_NOTIFICATION, notification.build());
                             }
                             postscanStartTime = System.currentTimeMillis();
                         }
@@ -529,6 +535,35 @@ public class MsoXposedMod extends XposedModule {
         } catch (ClassNotFoundException e) {
             throw new UnexpectedException("Failed to load a class", e);
         }
+    }
+
+    private void reportDurations(Context context, String volumeName) {
+        long prescanTime = prescanEndTime - prescanStartTime;
+        long postscanTime = postscanEndTime - postscanStartTime;
+
+        String prescanDuration = formatDuration(prescanTime);
+        String scanDuration = formatDuration(scanTime);
+        String postscanDuration = formatDuration(postscanTime);
+
+        String scanDirectoriesDuration = formatDuration(totalEndTime - totalStartTime);
+        Notification.Builder notification = createInboxStyleNotification(context, "Media Scanner Optimizer",
+                "Scan directories time " + scanDirectoriesDuration,
+                "Volume " + volumeName + " (Expand for details)",
+                "Volume " + volumeName,
+                "Pre-scan: " + prescanDuration,
+                "Scan: " + scanDuration,
+                "Post-scan: " + postscanDuration
+        );
+
+        Intent donateIntent = Paypal.createDonationIntent(context, "email@thomashofmann.com", "XMSO", "EUR");
+        PendingIntent piDonate = PendingIntent.getActivity(context, 0, donateIntent, 0);
+
+        notification.addAction(android.R.drawable.ic_menu_add, "Donate", piDonate);
+        notification.setContentIntent(piDonate);
+
+        PendingIntent piSend = buildActionSendPendingIntent(context, "Volume " + volumeName + " results", "Pre-scan: " + prescanDuration, "Scan: " + scanDuration, "Post-scan: " + postscanDuration);
+        notification.addAction(android.R.drawable.ic_menu_send, "Send", piSend);
+        showNotification(context, notification);
     }
 
     private String formatDuration(long ms) {
@@ -601,9 +636,6 @@ public class MsoXposedMod extends XposedModule {
             mediaFileTypeRestrictions.add(MediaFileTypeEnum.picture);
         }
         if (mediaFileTypeRestrictions.isEmpty()) {
-            // Logger.log(Log.DEBUG,
-            // "No media file type marker files found in directory {0}",
-            // directory);
             File parentDirectory = directory.getParentFile();
             if (parentDirectory != null) {
                 mediaFileTypeRestrictions = getMediaFileTypeRestrictions(parentDirectory);
