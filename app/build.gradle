@@ -10,8 +10,8 @@ android {
         applicationId "com.thomashofmann.xposed.mediascanneroptimizer"
         minSdkVersion 16
         targetSdkVersion 19
-        versionCode 12
-        versionName "1.3.2"
+        versionCode 13
+        versionName "1.3.3"
     }
 
     signingConfigs {

@@ -173,7 +173,16 @@ public class MsoXposedMod extends XposedModule {
                                     serviceExtras.putString("volume", "external");
                                     serviceExtras.putBoolean(USER_INITIATED_SCAN, true);
                                     Intent serviceIntent = new Intent();
-                                    ComponentName componentName = new ComponentName("com.android.providers.media", "com.android.providers.media.MediaScannerService");
+                                    String serviceClassName = "com.android.providers.media.MediaScannerService";
+                                    try {
+                                        /*
+                                         * call HTC specific service
+                                         */
+                                        getLoadPackageParam().classLoader.loadClass("com.android.providers.media.MediaScannerServiceEx");
+                                        serviceClassName = "com.android.providers.media.MediaScannerServiceEx";
+                                    } catch (ClassNotFoundException e) {
+                                    }
+                                    ComponentName componentName = new ComponentName("com.android.providers.media", serviceClassName);
                                     serviceIntent.setComponent(componentName);
                                     serviceIntent.putExtras(serviceExtras);
                                     context.startService(serviceIntent);
@@ -188,7 +197,7 @@ public class MsoXposedMod extends XposedModule {
                                         deleteMediaStoreContent(context);
                                         createSimpleNotification(context, "Deleted media store content.", null, null);
                                     } catch (Exception e) {
-                                        UnexpectedException unexpectedException = new UnexpectedException("Failed to delete media store contents", e);
+                                        UnexpectedException unexpectedException = new UnexpectedException(e, "Failed to delete media store contents");
                                         createAndShowNotification(context, "Media Scanner Optimizer", unexpectedException);
                                     }
                                 }
@@ -492,49 +501,63 @@ public class MsoXposedMod extends XposedModule {
                     String.class, boolean.class, int.class, boolean.class, new MethodHook(hookBeforePrescanInInMediaScannerCode, hookAfterPrescanInInMediaScannerCode));
         }
 
+
+        Procedure1<XC_MethodHook.MethodHookParam> hookBeforeProcessDirectoryMediaScannerCode = new Procedure1<XC_MethodHook.MethodHookParam>() {
+            @Override
+            public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                Logger.d("In android.media.MediaScanner#processDirectory beforeHookedMethod");
+                if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
+                    String path = (String) methodHookParam.args[0];
+                    Notification.Builder notification = createSimpleNotification(mediaScannerContext, "Media Scanner Optimizer", "Scanning " + path, null);
+                    getNotificationManager(mediaScannerContext).notify(FOREGROUND_NOTIFICATION, notification.build());
+                }
+                processDirectoryStartTime = System.currentTimeMillis();
+            }
+        };
+
+        Procedure1<XC_MethodHook.MethodHookParam> hookAfterProcessDirectoryMediaScannerCode = new Procedure1<XC_MethodHook.MethodHookParam>() {
+            @Override
+            public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                processDirectoryEndTime = System.currentTimeMillis();
+                scanTime = scanTime + (processDirectoryEndTime - processDirectoryStartTime);
+            }
+        };
+
         Class mediaScannerClientClass = null;
         try {
             mediaScannerClientClass = getLoadPackageParam().classLoader.loadClass("android.media.MediaScannerClient");
-            hookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "processDirectory",
-                    String.class, mediaScannerClientClass, new MethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
-                        @Override
-                        public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
-                            Logger.d("In android.media.MediaScanner#processDirectory beforeHookedMethod");
-                            if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
-                                String path = (String) methodHookParam.args[0];
-                                Notification.Builder notification = createSimpleNotification(mediaScannerContext, "Media Scanner Optimizer", "Scanning " + path, null);
-                                getNotificationManager(mediaScannerContext).notify(FOREGROUND_NOTIFICATION, notification.build());
-                            }
-                            processDirectoryStartTime = System.currentTimeMillis();
-                        }
-                    }, new Procedure1<XC_MethodHook.MethodHookParam>() {
-                        @Override
-                        public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
-                            processDirectoryEndTime = System.currentTimeMillis();
-                            scanTime = scanTime + (processDirectoryEndTime - processDirectoryStartTime);
-                        }
-                    }));
-
-            hookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "postscan",
-                    String[].class, new MethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
-                        @Override
-                        public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
-                            Logger.d("In android.media.MediaScanner#processDirectory prescan");
-                            if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
-                                Notification.Builder notification = createSimpleNotification(mediaScannerContext, "Media Scanner Optimizer", "Postscan", null);
-                                getNotificationManager(mediaScannerContext).notify(FOREGROUND_NOTIFICATION, notification.build());
-                            }
-                            postscanStartTime = System.currentTimeMillis();
-                        }
-                    }, new Procedure1<XC_MethodHook.MethodHookParam>() {
-                        @Override
-                        public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
-                            postscanEndTime = System.currentTimeMillis();
-                        }
-                    }));
+            success = hookMethod(false, "android.media.MediaScanner", getLoadPackageParam().classLoader, "processDirectory",
+                    String.class, mediaScannerClientClass,
+                    new MethodHook(hookBeforeProcessDirectoryMediaScannerCode, hookAfterProcessDirectoryMediaScannerCode));
+            if (!success) {
+                /*
+                 * try HTC variant
+                 */
+                hookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "processDirectory",
+                        String.class, mediaScannerClientClass, boolean.class, boolean.class, int.class,
+                        new MethodHook(hookBeforeProcessDirectoryMediaScannerCode, hookAfterProcessDirectoryMediaScannerCode));
+            }
         } catch (ClassNotFoundException e) {
-            throw new UnexpectedException("Failed to load a class", e);
+            throw new UnexpectedException(e, "Failed to load a class");
         }
+
+        hookMethod("android.media.MediaScanner", getLoadPackageParam().classLoader, "postscan",
+                String[].class, new MethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
+                    @Override
+                    public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                        Logger.d("In android.media.MediaScanner#processDirectory prescan");
+                        if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
+                            Notification.Builder notification = createSimpleNotification(mediaScannerContext, "Media Scanner Optimizer", "Postscan", null);
+                            getNotificationManager(mediaScannerContext).notify(FOREGROUND_NOTIFICATION, notification.build());
+                        }
+                        postscanStartTime = System.currentTimeMillis();
+                    }
+                }, new Procedure1<XC_MethodHook.MethodHookParam>() {
+                    @Override
+                    public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                        postscanEndTime = System.currentTimeMillis();
+                    }
+                }));
     }
 
     private void reportDurations(Context context, String volumeName) {
@@ -606,7 +629,7 @@ public class MsoXposedMod extends XposedModule {
                 }
             }
         } catch (ClassNotFoundException e) {
-            throw new UnexpectedException("Class \"android.media.MediaFile\" not found");
+            throw new UnexpectedException(e, "Failed to load a class");
         }
         return TreatAsMediaFileEnum.media_file_false;
     }
