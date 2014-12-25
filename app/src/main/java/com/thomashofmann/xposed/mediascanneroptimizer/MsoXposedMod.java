@@ -7,8 +7,6 @@ import android.content.ComponentName;
 import android.content.ContentProviderClient;
 import android.content.Context;
 import android.content.Intent;
-import android.content.res.Resources;
-import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -16,6 +14,7 @@ import android.os.Handler;
 import android.os.Process;
 import android.text.format.DateUtils;
 
+import com.thomashofmann.xposed.lib.AfterMethodHook;
 import com.thomashofmann.xposed.lib.BeforeMethodHook;
 import com.thomashofmann.xposed.lib.Logger;
 import com.thomashofmann.xposed.lib.MethodHook;
@@ -23,8 +22,10 @@ import com.thomashofmann.xposed.lib.Paypal;
 import com.thomashofmann.xposed.lib.Procedure1;
 import com.thomashofmann.xposed.lib.UnexpectedException;
 import com.thomashofmann.xposed.lib.XposedModule;
+import com.thomashofmann.xposed.mediascanneroptimizer.cm11.FakeContextForRetrievingTopLevelResources;
 
 import java.io.File;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -32,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 
 import de.robv.android.xposed.XC_MethodHook;
+import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 
 public class MsoXposedMod extends XposedModule {
@@ -95,56 +97,216 @@ public class MsoXposedMod extends XposedModule {
     }
 
     @Override
-    public int getNotificationIconResourceId() {
+    protected int getNotificationIconResourceId() {
         return R.drawable.ic_notification;
     }
 
+
+    @Override
+    protected void doInitZygote(StartupParam startupParam) {
+        try {
+            /*
+            Class<?> resourcesManagerClass = Class.forName("android.app.ResourcesManager");
+            Logger.d("resourcesManagerClass is {0}", resourcesManagerClass);
+            if (resourcesManagerClass != null) {
+                Method getTopLevelResourcesMethod = null;
+                for (Method method : resourcesManagerClass.getDeclaredMethods()) {
+                    if(method.getName().equals("getTopLevelResources"))  {
+                        getTopLevelResourcesMethod = method;
+                        break;
+                    }
+                }
+                Logger.d("getTopLevelResourcesMethod is {0}", getTopLevelResourcesMethod);
+                if(getTopLevelResourcesMethod != null) {
+                    Map<Member, XposedBridge.CopyOnWriteSortedSet<XC_MethodHook>> sHookedMethodCallbacks = (Map<Member, XposedBridge.CopyOnWriteSortedSet<XC_MethodHook>>) XposedHelpers.getStaticObjectField(XposedBridge.class, "sHookedMethodCallbacks");
+                    XposedBridge.CopyOnWriteSortedSet<XC_MethodHook> hooksForMethod = sHookedMethodCallbacks.get(getTopLevelResourcesMethod);
+                    Logger.d("hooksForMethod is {0}", hooksForMethod);
+                    Object[] hooksForMethodSnapshot = hooksForMethod.getSnapshot();
+                    Logger.d("hooksForMethodSnapshot size is {0}", hooksForMethodSnapshot.length);
+                    XC_MethodHook hook = (XC_MethodHook) hooksForMethodSnapshot[0];
+                    Logger.d("hook is {0}", hook);
+                    XposedBridge.hookAllMethods(hook.getClass(),"beforeHookedMethod",new LogMethodInvocationHook());
+                    XposedBridge.hookAllMethods(hook.getClass(),"afterHookedMethod",new AfterMethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
+                        @Override
+                        public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                            Logger.d("Result for afterHookedMethod is {0}",methodHookParam.getResult());
+                        }
+                    }));
+                    XposedBridge.hookAllMethods(resourcesManagerClass, "getTopLevelThemedResources", new LogMethodInvocationHook());
+                    XposedBridge.hookAllMethods(resourcesManagerClass, "getTopLevelThemedResources", hook);
+                }
+            }*/
+            Class<?> resourcesManagerClass = Class.forName("android.app.ResourcesManager");
+            Logger.d("resourcesManagerClass is {0}", resourcesManagerClass);
+            if (resourcesManagerClass != null) {
+                Method getTopLevelResourcesMethod = null;
+                for (Method method : resourcesManagerClass.getDeclaredMethods()) {
+                    if (method.getName().equals("getTopLevelResources")) {
+                        getTopLevelResourcesMethod = method;
+                        break;
+                    }
+                }
+                Logger.d("getTopLevelResourcesMethod is {0}", getTopLevelResourcesMethod);
+                Method getTopLevelThemedResourcesMethod = null;
+                for (Method method : resourcesManagerClass.getDeclaredMethods()) {
+                    if (method.getName().equals("getTopLevelThemedResources")) {
+                        getTopLevelThemedResourcesMethod = method;
+                        break;
+                    }
+                }
+                Logger.d("getTopLevelThemedResourcesMethod is {0}", getTopLevelThemedResourcesMethod);
+
+                if (getTopLevelResourcesMethod != null && getTopLevelThemedResourcesMethod != null) {
+                    //XposedBridge.hookAllMethods(resourcesManagerClass, "getTopLevelThemedResources", new LogMethodInvocationHook());
+                    XposedBridge.hookAllMethods(resourcesManagerClass, "getTopLevelThemedResources",
+                            new BeforeMethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
+                                @Override
+                                public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                                    Object resourcesManager = methodHookParam.thisObject;
+                                    /*
+                                    public Resources getTopLevelResources(String resDir, String[] overlayDirs, int displayId, String packageName,
+                                                Configuration overrideConfiguration, CompatibilityInfo compatInfo, IBinder token, Context context)
+                                     */
+                                    /*
+                                    public Resources getTopLevelThemedResources(String resDir, int displayId,
+                                                        String packageName,
+                                                        String themePackageName,
+                                                        CompatibilityInfo compatInfo, IBinder token)
+                                     */
+                                    String packageName = (String) methodHookParam.args[2];
+                                    if (getTargetPackageNames().contains(packageName)) {
+                                        Logger.d("Calling getTopLevelResources instead of getTopLevelThemedResources for {0}", packageName);
+                                        Object unthemedTopLevelResources = XposedHelpers.callMethod(resourcesManager, "getTopLevelResources",
+                                                methodHookParam.args[0],
+                                                new String[]{},
+                                                methodHookParam.args[1],
+                                                methodHookParam.args[2],
+                                                null,
+                                                methodHookParam.args[4],
+                                                methodHookParam.args[5],
+                                                new FakeContextForRetrievingTopLevelResources());
+                                        methodHookParam.setResult(unthemedTopLevelResources);
+                                    }
+                                }
+                            }));
+                }
+            }
+        } catch (Throwable t) {
+            Logger.e(t, "Problem hooking getTopLevelThemedResources");
+        }
+    }
+
+
+//    @Override
+//    public void handleLoadPackage(XC_LoadPackage.LoadPackageParam loadPackageParam) throws Throwable {
+//        if (loadPackageParam.packageName.equals("com.android.systemui")) {
+//            Logger.i("loadPackage for {0}", loadPackageParam.packageName);
+//            Class statusBarIconClass = XposedHelpers.findClass("com.android.internal.statusbar.StatusBarIcon", loadPackageParam.classLoader);
+//            Logger.i("statusBarIconClass is {0}", statusBarIconClass);
+//
+//            hookMethod("com.android.systemui.statusbar.StatusBarIconView", loadPackageParam.classLoader, "getIcon",
+//                    Context.class, statusBarIconClass, new AfterMethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
+//                        @Override
+//                        public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+//                            Object result = methodHookParam.getResult();
+//                            if (result == null) {
+//                                Context context = (Context) methodHookParam.args[0];
+//                                Object statusBarIcon = methodHookParam.args[1];
+//                                Logger.d("statusBarIcon is {0}", statusBarIcon);
+//                                    /*
+//                                    int userId = icon.user.getIdentifier();
+//                                    if (userId == UserHandle.USER_ALL) {
+//                                        userId = UserHandle.USER_OWNER;
+//                                    }
+//                                    r = context.getPackageManager().getResourcesForApplicationAsUser(icon.iconPackage, userId);
+//                                     */
+//
+//                                String iconPackage = (String) XposedHelpers.getObjectField(statusBarIcon, "iconPackage");
+//                                int iconId = (Integer) XposedHelpers.getObjectField(statusBarIcon, "iconId");
+//
+//                                /*
+//                                if(moduleResources != null && iconPackage.equals(TARGET_PACKAGE_NAMES[0])) {
+//                                    Drawable icon = moduleResources.getDrawable(iconId);
+//                                    if(icon != null) {
+//                                        methodHookParam.setResult(icon);
+//                                    }
+//                                }
+//                                */
+//                                Object user = XposedHelpers.getObjectField(statusBarIcon, "user");
+//                                int userId = (Integer) XposedHelpers.callMethod(user, "getIdentifier");
+//                                if (userId == -1) {
+//                                    userId = 0;
+//                                }
+//                                PackageManager packageManager = context.getPackageManager();
+//                                Resources resources = (Resources) XposedHelpers.callMethod(packageManager, "getResourcesForApplicationAsUser", iconPackage, userId);
+//                                Drawable icon = resources.getDrawable(iconId);
+//                                Logger.i("Notification icon for {0} is {1}", iconId, icon);
+//                                methodHookParam.setResult(icon);
+//                            }
+//                        }
+//                    }));
+//        }
+//
+//        super.handleLoadPackage(loadPackageParam);
+//    }
+
+
     @Override
     public void doHandleLoadPackage() {
+        /*
+         * Internal service helper that no-one should use directly.
+         *
+         * The way the scan currently works is:
+         * - The Java MediaScannerService creates a MediaScanner (this class), and calls
+         *   MediaScanner.scanDirectories on it.
+         * - scanDirectories() calls the native processDirectory() for each of the specified directories.
+         * - the processDirectory() JNI method wraps the provided mediascanner client in a native
+         *   'MyMediaScannerClient' class, then calls processDirectory() on the native MediaScanner
+         *   object (which got created when the Java MediaScanner was created).
+         * - native MediaScanner.processDirectory() calls
+         *   doProcessDirectory(), which recurses over the folder, and calls
+         *   native MyMediaScannerClient.scanFile() for every file whose extension matches.
+         * - native MyMediaScannerClient.scanFile() calls back on Java MediaScannerClient.scanFile,
+         *   which calls doScanFile, which after some setup calls back down to native code, calling
+         *   MediaScanner.processFile().
+         * - MediaScanner.processFile() calls one of several methods, depending on the type of the
+         *   file: parseMP3, parseMP4, parseMidi, parseOgg or parseWMA.
+         * - each of these methods gets metadata key/value pairs from the file, and repeatedly
+         *   calls native MyMediaScannerClient.handleStringTag, which calls back up to its Java
+         *   counterparts in this file.
+         * - Java handleStringTag() gathers the key/value pairs that it's interested in.
+         * - once processFile returns and we're back in Java code in doScanFile(), it calls
+         *   Java MyMediaScannerClient.endFile(), which takes all the data that's been
+         *   gathered and inserts an entry in to the database.
+         *
+         * In summary:
+         * Java MediaScannerService calls
+         * Java MediaScanner scanDirectories, which calls
+         * Java MediaScanner processDirectory (native method), which calls
+         * native MediaScanner processDirectory, which calls
+         * native MyMediaScannerClient scanFile, which calls
+         * Java MyMediaScannerClient scanFile, which calls
+         * Java MediaScannerClient doScanFile, which calls
+         * Java MediaScanner processFile (native method), which calls
+         * native MediaScanner processFile, which calls
+         * native parseMP3, parseMP4, parseMidi, parseOgg or parseWMA, which calls
+         * native MyMediaScanner handleStringTag, which calls
+         * Java MyMediaScanner handleStringTag.
+         * Once MediaScanner processFile returns, an entry is inserted in to the database.
+         *
+         * The MediaScanner class is not thread-safe, so it should only be used in a single threaded manner.
+         */
 
-/*
- * Internal service helper that no-one should use directly.
- *
- * The way the scan currently works is:
- * - The Java MediaScannerService creates a MediaScanner (this class), and calls
- *   MediaScanner.scanDirectories on it.
- * - scanDirectories() calls the native processDirectory() for each of the specified directories.
- * - the processDirectory() JNI method wraps the provided mediascanner client in a native
- *   'MyMediaScannerClient' class, then calls processDirectory() on the native MediaScanner
- *   object (which got created when the Java MediaScanner was created).
- * - native MediaScanner.processDirectory() calls
- *   doProcessDirectory(), which recurses over the folder, and calls
- *   native MyMediaScannerClient.scanFile() for every file whose extension matches.
- * - native MyMediaScannerClient.scanFile() calls back on Java MediaScannerClient.scanFile,
- *   which calls doScanFile, which after some setup calls back down to native code, calling
- *   MediaScanner.processFile().
- * - MediaScanner.processFile() calls one of several methods, depending on the type of the
- *   file: parseMP3, parseMP4, parseMidi, parseOgg or parseWMA.
- * - each of these methods gets metadata key/value pairs from the file, and repeatedly
- *   calls native MyMediaScannerClient.handleStringTag, which calls back up to its Java
- *   counterparts in this file.
- * - Java handleStringTag() gathers the key/value pairs that it's interested in.
- * - once processFile returns and we're back in Java code in doScanFile(), it calls
- *   Java MyMediaScannerClient.endFile(), which takes all the data that's been
- *   gathered and inserts an entry in to the database.
- *
- * In summary:
- * Java MediaScannerService calls
- * Java MediaScanner scanDirectories, which calls
- * Java MediaScanner processDirectory (native method), which calls
- * native MediaScanner processDirectory, which calls
- * native MyMediaScannerClient scanFile, which calls
- * Java MyMediaScannerClient scanFile, which calls
- * Java MediaScannerClient doScanFile, which calls
- * Java MediaScanner processFile (native method), which calls
- * native MediaScanner processFile, which calls
- * native parseMP3, parseMP4, parseMidi, parseOgg or parseWMA, which calls
- * native MyMediaScanner handleStringTag, which calls
- * Java MyMediaScanner handleStringTag.
- * Once MediaScanner processFile returns, an entry is inserted in to the database.
- *
- * The MediaScanner class is not thread-safe, so it should only be used in a single threaded manner.
- */
+        hookMethod("com.android.providers.media.MtpReceiver",
+                getLoadPackageParam().classLoader, "onReceive", Context.class, Intent.class,
+                new BeforeMethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
+
+                    @Override
+                    public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                        Logger.d("MtpReceiver onReceive called.");
+                        methodHookParam.setResult(null);
+                    }
+                }));
 
         hookMethod("com.android.providers.media.MediaScannerReceiver",
                 getLoadPackageParam().classLoader, "onReceive", Context.class, Intent.class,
@@ -166,6 +328,7 @@ public class MsoXposedMod extends XposedModule {
                              */
                             if (extras != null && extras.getBoolean(PreferencesFragment.ACTION_SCAN_EXTERNAL)) {
                                 Logger.i("User initiated request to rescan external volume.");
+
                                 if (intentsByVolume.containsKey("external")) {
                                     displayToastUsingHandler(context, "A scan for the external volume is already in progress. Please try again later.");
                                 } else {
@@ -241,12 +404,14 @@ public class MsoXposedMod extends XposedModule {
                              */
                             Logger.i("Early return from onStartCommand because scan for volumen {0} is already scheduled",
                                     volumeInIntentExtra);
+                            methodHookParam.setResult(Service.START_NOT_STICKY);
+                            return;
                         }
-                        methodHookParam.setResult(Service.START_NOT_STICKY);
                     } else {
                         intentsByVolume.put(volumeInIntentExtra, intent);
                         volumesByStartId.put(startId, volumeInIntentExtra);
                     }
+
                     Logger.i("Number of start commands for external volume is {0}",
                             numberOfStartCommandsForExternalVolume);
                     Logger.i("Number of successful runs for external volume is {0}",
@@ -304,9 +469,14 @@ public class MsoXposedMod extends XposedModule {
                                     originalDirectoryString, duration);
                         }
                     }
-                    Logger.i("The following directories will be scanned by MediaScanner: {0}",
-                            directoriesToScan);
-                    methodHookParam.args[0] = directoriesToScan.toArray(new String[directoriesToScan.size()]);
+                    if (directoriesToScan.size() > 0) {
+                        Logger.i("The following directories will be scanned by MediaScanner: {0}",
+                                directoriesToScan);
+                        methodHookParam.args[0] = directoriesToScan.toArray(new String[directoriesToScan.size()]);
+                    } else {
+                        Logger.i("No directories will be scanned by MediaScanner");
+                        methodHookParam.setResult(null);
+                    }
                 } else {
                     Logger.i("The following directories will be scanned by MediaScanner: {0}",
                             Arrays.toString(directories));
@@ -354,9 +524,9 @@ public class MsoXposedMod extends XposedModule {
                 Logger.i("scanFile is called for file {0} and mime type {1}", path, mimetype);
                 File file = new File(path);
                 if (file.exists() && shouldScanFileBasedOnDirectory(file)) {
-                    Logger.i("File with path {0} will be scanned", path);
+                    Logger.d("File with path {0} will be scanned", path);
                 } else {
-                    Logger.i("File with path {0} should not be scanned", path);
+                    Logger.d("File with path {0} should not be scanned", path);
                     methodHookParam.setResult(null);
                 }
             }
@@ -391,6 +561,11 @@ public class MsoXposedMod extends XposedModule {
                             volumesByStartId.remove(startId);
                         }
                     }
+                }), new AfterMethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
+                    @Override
+                    public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
+                        Service service = (Service) methodHookParam.thisObject;
+                    }
                 }));
 
 
@@ -404,7 +579,7 @@ public class MsoXposedMod extends XposedModule {
                         }
 
                         if (!getSettings().getPreferences().getBoolean("pref_restrict_to_certain_media_types_state", false)) {
-                            Logger.d("Not restricting scan to certain media types");
+                            Logger.i("Not restricting scan to certain media types");
                             return;
                         }
 
@@ -415,10 +590,10 @@ public class MsoXposedMod extends XposedModule {
                                 switch (consideredAsMediaFile) {
                                     case media_file_true:
                                         methodHookParam.setResult(false);
+                                        Logger.v("The file {0} should be considered as a media file", file.getAbsolutePath());
                                         break;
                                     case media_file_false:
-                                        Logger.d("The file {0} should not be considered as a media file",
-                                                file.getAbsolutePath());
+                                        Logger.v("The file {0} should not be considered as a media file", file.getAbsolutePath());
                                         methodHookParam.setResult(true);
                                         break;
                                 }
@@ -452,7 +627,7 @@ public class MsoXposedMod extends XposedModule {
                     public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
                         mediaScannerContext = (Context) methodHookParam.args[0];
                         if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_with_background_thread_priority_state", true)) {
-                            Logger.i("Changing thread priority in MediaScanner constructor");
+                            Logger.d("Changing thread priority in MediaScanner constructor");
                             Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
                         }
                     }
@@ -478,7 +653,6 @@ public class MsoXposedMod extends XposedModule {
         Procedure1<XC_MethodHook.MethodHookParam> hookBeforePrescanInInMediaScannerCode = new Procedure1<XC_MethodHook.MethodHookParam>() {
             @Override
             public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
-                Logger.d("In android.media.MediaScanner#processDirectory prescan");
                 prescanStartTime = System.currentTimeMillis();
             }
         };
@@ -505,7 +679,6 @@ public class MsoXposedMod extends XposedModule {
         Procedure1<XC_MethodHook.MethodHookParam> hookBeforeProcessDirectoryMediaScannerCode = new Procedure1<XC_MethodHook.MethodHookParam>() {
             @Override
             public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
-                Logger.d("In android.media.MediaScanner#processDirectory beforeHookedMethod");
                 if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
                     String path = (String) methodHookParam.args[0];
                     Notification.Builder notification = createSimpleNotification(mediaScannerContext, "Media Scanner Optimizer", "Scanning " + path, null);
@@ -545,7 +718,6 @@ public class MsoXposedMod extends XposedModule {
                 String[].class, new MethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
                     @Override
                     public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
-                        Logger.d("In android.media.MediaScanner#processDirectory prescan");
                         if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
                             Notification.Builder notification = createSimpleNotification(mediaScannerContext, "Media Scanner Optimizer", "Postscan", null);
                             getNotificationManager(mediaScannerContext).notify(FOREGROUND_NOTIFICATION, notification.build());
@@ -558,6 +730,7 @@ public class MsoXposedMod extends XposedModule {
                         postscanEndTime = System.currentTimeMillis();
                     }
                 }));
+
     }
 
     private void reportDurations(Context context, String volumeName) {
@@ -581,8 +754,9 @@ public class MsoXposedMod extends XposedModule {
         Intent donateIntent = Paypal.createDonationIntent(context, "email@thomashofmann.com", "XMSO", "EUR");
         PendingIntent piDonate = PendingIntent.getActivity(context, 0, donateIntent, 0);
 
-        notification.addAction(android.R.drawable.ic_menu_add, "Donate", piDonate);
-        notification.setContentIntent(piDonate);
+        if (!getSettings().getPreferences().getBoolean("pref_hide_donation_actions_state", false)) {
+            notification.addAction(android.R.drawable.ic_menu_add, "Donate", piDonate);
+        }
 
         PendingIntent piSend = buildActionSendPendingIntent(context, "Volume " + volumeName + " results", "Pre-scan: " + prescanDuration, "Scan: " + scanDuration, "Post-scan: " + postscanDuration);
         notification.addAction(android.R.drawable.ic_menu_send, "Send", piSend);
@@ -638,9 +812,7 @@ public class MsoXposedMod extends XposedModule {
         List<MediaFileTypeEnum> mediaFileTypeRestrictions = mediaFilesToConsiderByDirectory.get(directory
                 .getAbsolutePath());
         if (mediaFileTypeRestrictions != null) {
-            // Logger.log(Log.DEBUG,
-            // "Media file type marker files for directory {0}: {1}", directory,
-            // mediaFileTypeRestrictions);
+            Logger.v("Media file type marker files for directory {0}: {1}", directory, mediaFileTypeRestrictions);
             return mediaFileTypeRestrictions;
         } else {
             mediaFileTypeRestrictions = new ArrayList<MsoXposedMod.MediaFileTypeEnum>();
@@ -664,7 +836,7 @@ public class MsoXposedMod extends XposedModule {
                 mediaFileTypeRestrictions = getMediaFileTypeRestrictions(parentDirectory);
             }
         } else {
-            Logger.d("Media file type marker files found in directory {0}: ", directory,
+            Logger.v("Media file type marker files found in directory {0}: ", directory,
                     mediaFileTypeRestrictions);
         }
         mediaFilesToConsiderByDirectory.put(directory.getAbsolutePath(), mediaFileTypeRestrictions);
@@ -695,6 +867,21 @@ public class MsoXposedMod extends XposedModule {
     }
 
     private void getDirectoriesMarkedForScanning(List<String> directoriesToScan, File directoryToStartFrom) {
+        int searchDepth = 1;
+        if (getSettings().getPreferences().getBoolean("pref_restrict_directories_to_scan_scan_two_levels_deep_state", false)) {
+            searchDepth = 2;
+        }
+        Logger.i("Searching for .scanMedia files {0} level(s) deep in file system.", searchDepth);
+        getDirectoriesMarkedForScanning(directoriesToScan, directoryToStartFrom, searchDepth, 0);
+    }
+
+    private void getDirectoriesMarkedForScanning(List<String> directoriesToScan, File directoryToStartFrom, int searchDepth, int currentDepth) {
+        currentDepth++;
+        if (currentDepth > searchDepth) {
+            Logger.d("SearchDepth of {0} reached at {1}. Will not descend further down the directory tree to find marker files.", searchDepth, directoryToStartFrom);
+            return;
+        }
+
         File[] allFiles = directoryToStartFrom.listFiles();
         if (allFiles == null) {
             return;
@@ -702,12 +889,14 @@ public class MsoXposedMod extends XposedModule {
         for (File file : allFiles) {
             if (file.isDirectory()) {
                 File directory = file;
+                Logger.d("CurrentDepth {0} for {1}", currentDepth, directory);
                 File markerFile = new File(directory, SCAN_MEDIA_MARKER);
                 if (markerFile.exists()) {
-                    Logger.d("Marker file exists in directory {0}", directory);
+                    Logger.v("Marker file exists in directory {0}", directory);
                     directoriesToScan.add(directory.getAbsolutePath());
                 } else {
-                    getDirectoriesMarkedForScanning(directoriesToScan, directory);
+                    Logger.v("Marker file does not exist in directory {0}", directory);
+                    getDirectoriesMarkedForScanning(directoriesToScan, directory, searchDepth, currentDepth);
                 }
             }
         }

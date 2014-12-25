@@ -5,14 +5,6 @@
     <string name="pref_donate_title">Donate</string>
     <string name="pref_donate_summary">Donate for this app via Paypal</string>
 
-    <string name="pref_logging_state_title">Android Logging</string>
-    <string name="pref_logging_disabled_summary">No log messages will be written to Android main log</string>
-    <string name="pref_logging_enabled_summary">Logging to Android main log</string>
-
-    <string name="pref_log_to_xposed_log_state_title">Xposed Log</string>
-    <string name="pref_log_to_xposed_log_disabled_summary">No log message will be written to the Xposed log</string>
-    <string name="pref_log_to_xposed_log_enabled_summary">Logging to Xposed log</string>
-
     <string name="pref_prevent_repetitive_scans_state_title">Repetitive Scans</string>
     <string name="pref_prevent_repetitive_scans_enabled_summary">Prevent repetitive scans (suggested)</string>
     <string name="pref_prevent_repetitive_scans_disable_summary">Allow repetitive scans (consumes more time and battery)</string>
@@ -28,7 +20,11 @@
     <string name="pref_restrict_directories_to_scan_title">Directories</string>
     <string name="pref_restrict_directories_to_scan_enabled_summary">Restrict scanning to directories that contain a .scanMedia file and subdirectories.</string>
     <string name="pref_restrict_directories_to_scan_disable_summary">Scan all directories. This consumes more time and adds media files from all directories to the media store.</string>
-    
+
+    <string name="pref_restrict_directories_to_scan_scan_two_levels_deep_title">Performance</string>
+    <string name="pref_restrict_directories_to_scan_scan_two_levels_deep_enabled_summary">Search for .scanMedia files in the top-level directories and their direct children. This consumes more time.</string>
+    <string name="pref_restrict_directories_to_scan_scan_two_levels_deep_disable_summary">Only search for .scanMedia files in top level directories (suggested). This saves time.</string>
+
     <string name="pref_restrict_to_certain_media_types_title">Media Types</string>
     <string name="pref_restrict_to_certain_media_types_enabled_summary">Restrict scanning for media types based upon the existence of .scanMusic, .scanVideo and .scanPictures files.</string>
     <string name="pref_restrict_to_certain_media_types_disable_summary">Scan all media types</string>
@@ -46,5 +42,25 @@
    
     <string name="pref_delete_media_store_title">Delete Media Store Contents</string>
     <string name="pref_delete_media_store_summary">Tap to delete existing entries in the media store (improves scan times when scans are restricted to certain directories or media types). Will not work in case a scan is currently in progress. This might take some seconds. A notification will be shown when the entries have been deleted.</string>
+
+    <string name="pref_logging_state_title">Android Logging</string>
+    <string name="pref_logging_disabled_summary">No log messages will be written to Android main log</string>
+    <string name="pref_logging_enabled_summary">Logging to Android main log</string>
+
+    <string name="pref_log_to_xposed_log_title">Xposed Log</string>
+    <string name="pref_log_to_xposed_log_disabled_summary">No log message will be written to the Xposed log</string>
+    <string name="pref_log_to_xposed_log_enabled_summary">Logging to Xposed log</string>
+
+    <string name="pref_log_to_xposed_log_debug_title">Xposed Log Debug Level</string>
+    <string name="pref_log_to_xposed_log_debug_disabled_summary">Debug logging to Xposed log is deactivated</string>
+    <string name="pref_log_to_xposed_log_debug_enabled_summary">Debug logging to Xposed log is activated</string>
+
+    <string name="pref_log_to_xposed_log_verbose_title">Xposed Log Verbose Level</string>
+    <string name="pref_log_to_xposed_log_verbose_disabled_summary">Verbose logging to Xposed log is deactivated</string>
+    <string name="pref_log_to_xposed_log_verbose_enabled_summary">Verbose logging to Xposed log is activated</string>
+
+    <string name="pref_hide_donation_actions_title">Donations</string>
+    <string name="pref_hide_donation_actions_disabled_summary">Donation actions are shown</string>
+    <string name="pref_hide_donation_actions_enabled_summary">Donation actions will not be shown</string>
 
 </resources>
