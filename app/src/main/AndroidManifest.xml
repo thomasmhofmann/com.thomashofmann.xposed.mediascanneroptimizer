@@ -15,12 +15,21 @@
             android:name="xposeddescription"
             android:value="Xposed Media Scanner Optimizer" />
         <activity
-            android:name=".PreferencesActivity"
+            android:name=".MainPreferencesActivity"
             android:label="@string/launcher_name">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+        </activity>
+        <activity
+            android:name=".PreferencesActivity">
+        </activity>
+        <activity
+            android:name=".ToolsPreferencesActivity">
+        </activity>
+        <activity
+            android:name=".MiscellaneousPreferencesActivity">
         </activity>
     </application>
 

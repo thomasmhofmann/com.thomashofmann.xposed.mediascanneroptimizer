@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" >
+    <Preference
+        android:key="pref_trigger_media_scan"
+        android:title="@string/pref_trigger_media_scan_title"
+        android:summary="@string/pref_trigger_media_scan_summary"/>
+    <Preference
+        android:key="pref_delete_media_store"
+        android:title="@string/pref_delete_media_store_title"
+        android:summary="@string/pref_delete_media_store_summary"/>
+</PreferenceScreen>

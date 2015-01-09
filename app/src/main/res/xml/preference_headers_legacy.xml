@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+    <Preference
+        android:title="@string/prefs_category_scan_behavior"
+        android:summary="@string/prefs_summ_category_scan_behavior"  >
+        <intent
+            android:targetPackage="com.thomashofmann.xposed.mediascanneroptimizer"
+            android:targetClass="com.thomashofmann.xposed.mediascanneroptimizer.PreferencesActivity"
+            android:action="scanBehavior" />
+    </Preference>
+    <Preference
+        android:title="@string/prefs_category_user_interaction"
+        android:summary="@string/prefs_summ_category_user_interaction" >
+        <intent
+            android:targetPackage="com.thomashofmann.xposed.mediascanneroptimizer"
+            android:targetClass="com.thomashofmann.xposed.mediascanneroptimizer.PreferencesActivity"
+            android:action="userInteraction" />
+    </Preference>
+    <Preference
+        android:title="@string/prefs_category_tools"
+        android:summary="@string/prefs_summ_category_tools" >
+        <intent
+            android:targetPackage="com.thomashofmann.xposed.mediascanneroptimizer"
+            android:targetClass="com.thomashofmann.xposed.mediascanneroptimizer.ToolsPreferencesActivity"
+            android:action="tools" />
+    </Preference>
+    <Preference
+        android:title="@string/prefs_category_logging"
+        android:summary="@string/prefs_summ_category_logging" >
+        <intent
+            android:targetPackage="com.thomashofmann.xposed.mediascanneroptimizer"
+            android:targetClass="com.thomashofmann.xposed.mediascanneroptimizer.PreferencesActivity"
+            android:action="logging" />
+    </Preference>
+    <Preference
+        android:title="@string/prefs_category_misc"
+        android:summary="@string/prefs_summ_category_misc" >
+        <intent
+            android:targetPackage="com.thomashofmann.xposed.mediascanneroptimizer"
+            android:targetClass="com.thomashofmann.xposed.mediascanneroptimizer.MiscellaneousPreferencesActivity"
+            android:action="about" />
+    </Preference>
+</PreferenceScreen>

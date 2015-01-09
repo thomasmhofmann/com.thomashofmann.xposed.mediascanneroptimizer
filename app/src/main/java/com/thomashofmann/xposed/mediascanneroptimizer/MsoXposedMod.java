@@ -12,9 +12,9 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Process;
+import android.support.v4.app.NotificationCompat;
 import android.text.format.DateUtils;
 
-import com.thomashofmann.xposed.lib.AfterMethodHook;
 import com.thomashofmann.xposed.lib.BeforeMethodHook;
 import com.thomashofmann.xposed.lib.Logger;
 import com.thomashofmann.xposed.lib.MethodHook;
@@ -93,7 +93,7 @@ public class MsoXposedMod extends XposedModule {
 
     @Override
     protected String getPreferencesChangedAction() {
-        return PreferencesFragment.PREF_CHANGE_ACTION;
+        return PreferencesActivity.PREF_CHANGE_ACTION;
     }
 
     @Override
@@ -326,7 +326,7 @@ public class MsoXposedMod extends XposedModule {
                             /*
                              * piggyback on this event because it can be triggered easily
                              */
-                            if (extras != null && extras.getBoolean(PreferencesFragment.ACTION_SCAN_EXTERNAL)) {
+                            if (extras != null && extras.getBoolean(ToolsPreferencesActivity.ACTION_SCAN_EXTERNAL)) {
                                 Logger.i("User initiated request to rescan external volume.");
 
                                 if (intentsByVolume.containsKey("external")) {
@@ -351,7 +351,7 @@ public class MsoXposedMod extends XposedModule {
                                     context.startService(serviceIntent);
                                 }
                                 methodHookParam.setResult(null);
-                            } else if (extras != null && extras.getBoolean(PreferencesFragment.ACTION_DELETE_MEDIA_STORE_CONTENTS)) {
+                            } else if (extras != null && extras.getBoolean(ToolsPreferencesActivity.ACTION_DELETE_MEDIA_STORE_CONTENTS)) {
                                 Logger.i("Request to delete MediaStore content");
                                 if (intentsByVolume.containsKey("external")) {
                                     displayToastUsingHandler(context, "Could not delete media store contents for external volume because a scan is in progress. Please try again later.");
@@ -450,7 +450,7 @@ public class MsoXposedMod extends XposedModule {
 
                 if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
                     Logger.i("Set service to foreground");
-                    Notification.Builder notification = createSimpleNotification(service, "Media Scanner Optimizer", "Processing volume " + volumeName, null);
+                    NotificationCompat.Builder notification = createSimpleNotification(service, "Media Scanner Optimizer", "Processing volume " + volumeName, null);
                     service.startForeground(FOREGROUND_NOTIFICATION, notification.build());
                 }
 
@@ -560,11 +560,6 @@ public class MsoXposedMod extends XposedModule {
                             }
                             volumesByStartId.remove(startId);
                         }
-                    }
-                }), new AfterMethodHook(new Procedure1<XC_MethodHook.MethodHookParam>() {
-                    @Override
-                    public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
-                        Service service = (Service) methodHookParam.thisObject;
                     }
                 }));
 
@@ -681,7 +676,7 @@ public class MsoXposedMod extends XposedModule {
             public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
                 if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
                     String path = (String) methodHookParam.args[0];
-                    Notification.Builder notification = createSimpleNotification(mediaScannerContext, "Media Scanner Optimizer", "Scanning " + path, null);
+                    NotificationCompat.Builder notification = createSimpleNotification(mediaScannerContext, "Media Scanner Optimizer", "Scanning " + path, null);
                     getNotificationManager(mediaScannerContext).notify(FOREGROUND_NOTIFICATION, notification.build());
                 }
                 processDirectoryStartTime = System.currentTimeMillis();
@@ -719,7 +714,7 @@ public class MsoXposedMod extends XposedModule {
                     @Override
                     public void apply(XC_MethodHook.MethodHookParam methodHookParam) {
                         if (getSettings().getPreferences().getBoolean("pref_run_media_scanner_as_foreground_service_state", true)) {
-                            Notification.Builder notification = createSimpleNotification(mediaScannerContext, "Media Scanner Optimizer", "Postscan", null);
+                            NotificationCompat.Builder notification = createSimpleNotification(mediaScannerContext, "Media Scanner Optimizer", "Postscan", null);
                             getNotificationManager(mediaScannerContext).notify(FOREGROUND_NOTIFICATION, notification.build());
                         }
                         postscanStartTime = System.currentTimeMillis();
@@ -742,7 +737,7 @@ public class MsoXposedMod extends XposedModule {
         String postscanDuration = formatDuration(postscanTime);
 
         String scanDirectoriesDuration = formatDuration(totalEndTime - totalStartTime);
-        Notification.Builder notification = createInboxStyleNotification(context, "Media Scanner Optimizer",
+        NotificationCompat.Builder notification = createInboxStyleNotification(context, "Media Scanner Optimizer",
                 "Scan directories time " + scanDirectoriesDuration,
                 "Volume " + volumeName + " (Expand for details)",
                 "Volume " + volumeName,
@@ -910,7 +905,7 @@ public class MsoXposedMod extends XposedModule {
         int deletedEntries = contentProviderClient.delete(uri, null, null);
         Logger.i("Deleted {0} rows from file entries", deletedEntries);
 
-        Notification.Builder notification = createSimpleNotification(context, "Media Scanner Optimizer", "Deleted " + deletedEntries + " entries", null);
+        NotificationCompat.Builder notification = createSimpleNotification(context, "Media Scanner Optimizer", "Deleted " + deletedEntries + " entries", null);
         PendingIntent piSend = buildActionSendPendingIntent(context, "Deleted media store content", "Deleted " + deletedEntries + " entries.");
         notification.addAction(android.R.drawable.ic_menu_send, "Send", piSend);
         showNotification(context, notification);

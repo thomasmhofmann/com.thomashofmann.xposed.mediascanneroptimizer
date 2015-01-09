@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" >
+    <CheckBoxPreference
+        android:defaultValue="true"
+        android:key="pref_run_media_scanner_as_foreground_service_state"
+        android:persistent="true"
+        android:summaryOff="@string/pref_run_media_scanner_as_foreground_service_disable_summary"
+        android:summaryOn="@string/pref_run_media_scanner_as_foreground_service_enabled_summary"
+        android:title="@string/pref_run_media_scanner_as_foreground_service_state_title" />
+    <CheckBoxPreference
+        android:defaultValue="true"
+        android:key="pref_run_media_scanner_with_background_thread_priority_state"
+        android:persistent="true"
+        android:summaryOff="@string/pref_run_media_scanner_with_background_thread_priority_disable_summary"
+        android:summaryOn="@string/pref_run_media_scanner_with_background_thread_priority_enabled_summary"
+        android:title="@string/pref_run_media_scanner_with_background_thread_priority_title" />
+    <CheckBoxPreference
+        android:defaultValue="true"
+        android:key="pref_show_results_state"
+        android:persistent="true"
+        android:summaryOff="@string/pref_show_results_disable_summary"
+        android:summaryOn="@string/pref_show_results_enabled_summary"
+        android:title="@string/pref_show_results_title" />
+</PreferenceScreen>
