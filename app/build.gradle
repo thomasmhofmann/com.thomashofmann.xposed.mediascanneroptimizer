@@ -3,39 +3,33 @@ import java.text.SimpleDateFormat
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 19
-    buildToolsVersion '19.1.0'
+    compileSdkVersion 26
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
 
     defaultConfig {
         applicationId "com.thomashofmann.xposed.mediascanneroptimizer"
-        minSdkVersion 4
-        targetSdkVersion 19
+        minSdkVersion 21
+        targetSdkVersion 26
         versionCode 18
         versionName "1.4.0"
     }
 
     signingConfigs {
         release {
-            storeFile file("keystore.jks")
-            storePassword "xposed"
+            storeFile file("ks.jks")
+            storePassword "password"
             keyAlias "xposed"
-            keyPassword "xposed"
+            keyPassword "password"
         }
     }
 
     buildTypes {
         release {
-            project.ext.set("archivesBaseName", "xposed-mso");
-            def dateFormat = new SimpleDateFormat('yyyy-MM-d--HH-mm-ss-SSSZ')
-            def dateString = dateFormat.format(new java.util.Date())
             signingConfig signingConfigs.release
-            applicationVariants.all { variant ->
-                variant.outputs.each { output ->
-                    def file = output.outputFile
-                    def nameWithVersion = file.name.replace('.apk', '-' + defaultConfig.versionName + '-' + dateString + '.apk')
-                    output.outputFile = new File(file.parent, nameWithVersion)
-                }
-            }
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
@@ -48,18 +42,9 @@ android {
 }
 
 dependencies {
-    compile "com.android.support:support-v4:21.0.+"
-    compile fileTree(dir: 'libs', include: ['*.jar'])
-    compile 'com.thomashofmann.xposed:lib:1.3.0-SNAPSHOT@aar'
-    provided fileTree(dir: 'lib-xposed', include: ['*.jar'])
+    compileOnly 'de.robv.android.xposed:api:53'
+    implementation "com.android.support:support-v4:26.1.0"
+    implementation 'com.thomashofmann.xposed:xposed-lib:1.3.3@aar'
 }
 
-task deployApks(type: Copy) {
-    from 'build/outputs/apk', 'build/proguard/release'
-    include '**/*.apk', '**/*.txt'
-    exclude '**/*-unaligned.apk'
-    into 'X:\\Google Drive\\builds'
-}
-
-assembleRelease.finalizedBy deployApks
 

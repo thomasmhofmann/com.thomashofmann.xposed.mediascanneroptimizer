@@ -11,15 +11,19 @@ import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.ChangedPackages;
 import android.content.pm.FeatureInfo;
 import android.content.pm.InstrumentationInfo;
 import android.content.pm.PackageInfo;
+import android.content.pm.PackageInstaller;
 import android.content.pm.PackageManager;
 import android.content.pm.PermissionGroupInfo;
 import android.content.pm.PermissionInfo;
 import android.content.pm.ProviderInfo;
 import android.content.pm.ResolveInfo;
 import android.content.pm.ServiceInfo;
+import android.content.pm.SharedLibraryInfo;
+import android.content.pm.VersionedPackage;
 import android.content.res.AssetManager;
 import android.content.res.Configuration;
 import android.content.res.Resources;
@@ -27,12 +31,15 @@ import android.content.res.XmlResourceParser;
 import android.database.DatabaseErrorHandler;
 import android.database.sqlite.SQLiteDatabase;
 import android.graphics.Bitmap;
+import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.UserHandle;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.view.Display;
 
 import java.io.File;
@@ -66,6 +73,11 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
             }
 
             @Override
+            public PackageInfo getPackageInfo(VersionedPackage versionedPackage, int i) throws NameNotFoundException {
+                return null;
+            }
+
+            @Override
             public String[] currentToCanonicalPackageNames(String[] names) {
                 return new String[0];
             }
@@ -80,9 +92,25 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
                 return null;
             }
 
+            @Nullable
+            @Override
+            public Intent getLeanbackLaunchIntentForPackage(@NonNull String s) {
+                return null;
+            }
+
             @Override
             public int[] getPackageGids(String packageName) throws NameNotFoundException {
                 return new int[0];
+            }
+
+            @Override
+            public int[] getPackageGids(String s, int i) throws NameNotFoundException {
+                return new int[0];
+            }
+
+            @Override
+            public int getPackageUid(String s, int i) throws NameNotFoundException {
+                return 0;
             }
 
             @Override
@@ -142,7 +170,12 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
 
             @Override
             public int checkPermission(String permName, String pkgName) {
-                return 0;
+                return PackageManager.PERMISSION_GRANTED;
+            }
+
+            @Override
+            public boolean isPermissionRevokedByPolicy(@NonNull String s, @NonNull String s1) {
+                return false;
             }
 
             @Override
@@ -162,12 +195,12 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
 
             @Override
             public int checkSignatures(String pkg1, String pkg2) {
-                return 0;
+                return PackageManager.SIGNATURE_MATCH;
             }
 
             @Override
             public int checkSignatures(int uid1, int uid2) {
-                return 0;
+                return PackageManager.SIGNATURE_MATCH;
             }
 
             @Override
@@ -186,8 +219,51 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
             }
 
             @Override
+            public boolean isInstantApp() {
+                return false;
+            }
+
+            @Override
+            public boolean isInstantApp(String s) {
+                return false;
+            }
+
+            @Override
+            public int getInstantAppCookieMaxBytes() {
+                return 0;
+            }
+
+            @NonNull
+            @Override
+            public byte[] getInstantAppCookie() {
+                return new byte[0];
+            }
+
+            @Override
+            public void clearInstantAppCookie() {
+
+            }
+
+            @Override
+            public void updateInstantAppCookie(@Nullable byte[] bytes) {
+
+            }
+
+            @Override
             public String[] getSystemSharedLibraryNames() {
                 return new String[0];
+            }
+
+            @NonNull
+            @Override
+            public List<SharedLibraryInfo> getSharedLibraries(int i) {
+                return null;
+            }
+
+            @Nullable
+            @Override
+            public ChangedPackages getChangedPackages(int i) {
+                return null;
             }
 
             @Override
@@ -197,6 +273,11 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
 
             @Override
             public boolean hasSystemFeature(String name) {
+                return false;
+            }
+
+            @Override
+            public boolean hasSystemFeature(String s, int i) {
                 return false;
             }
 
@@ -271,6 +352,16 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
             }
 
             @Override
+            public Drawable getActivityBanner(ComponentName componentName) throws NameNotFoundException {
+                return null;
+            }
+
+            @Override
+            public Drawable getActivityBanner(Intent intent) throws NameNotFoundException {
+                return null;
+            }
+
+            @Override
             public Drawable getDefaultActivityIcon() {
                 return null;
             }
@@ -282,6 +373,16 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
 
             @Override
             public Drawable getApplicationIcon(String packageName) throws NameNotFoundException {
+                return null;
+            }
+
+            @Override
+            public Drawable getApplicationBanner(ApplicationInfo applicationInfo) {
+                return null;
+            }
+
+            @Override
+            public Drawable getApplicationBanner(String s) throws NameNotFoundException {
                 return null;
             }
 
@@ -302,6 +403,21 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
 
             @Override
             public Drawable getApplicationLogo(String packageName) throws NameNotFoundException {
+                return null;
+            }
+
+            @Override
+            public Drawable getUserBadgedIcon(Drawable drawable, UserHandle userHandle) {
+                return null;
+            }
+
+            @Override
+            public Drawable getUserBadgedDrawableForDensity(Drawable drawable, UserHandle userHandle, Rect rect, int i) {
+                return null;
+            }
+
+            @Override
+            public CharSequence getUserBadgedLabel(CharSequence charSequence, UserHandle userHandle) {
                 return null;
             }
 
@@ -392,7 +508,7 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
 
             @Override
             public int getComponentEnabledSetting(ComponentName componentName) {
-                return 0;
+                return PackageManager.COMPONENT_ENABLED_STATE_DEFAULT;
             }
 
             @Override
@@ -402,12 +518,28 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
 
             @Override
             public int getApplicationEnabledSetting(String packageName) {
-                return 0;
+                return PackageManager.COMPONENT_ENABLED_STATE_DEFAULT;
             }
 
             @Override
             public boolean isSafeMode() {
                 return true;
+            }
+
+            @Override
+            public void setApplicationCategoryHint(@NonNull String s, int i) {
+
+            }
+
+            @NonNull
+            @Override
+            public PackageInstaller getPackageInstaller() {
+                return null;
+            }
+
+            @Override
+            public boolean canRequestPackageInstalls() {
+                return false;
             }
         };
     }
@@ -468,6 +600,16 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
     }
 
     @Override
+    public boolean moveSharedPreferencesFrom(Context context, String s) {
+        return false;
+    }
+
+    @Override
+    public boolean deleteSharedPreferences(String s) {
+        return false;
+    }
+
+    @Override
     public FileInputStream openFileInput(String name) throws FileNotFoundException {
         return null;
     }
@@ -488,7 +630,17 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
     }
 
     @Override
+    public File getDataDir() {
+        return null;
+    }
+
+    @Override
     public File getFilesDir() {
+        return null;
+    }
+
+    @Override
+    public File getNoBackupFilesDir() {
         return null;
     }
 
@@ -518,12 +670,22 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
     }
 
     @Override
+    public File getCodeCacheDir() {
+        return null;
+    }
+
+    @Override
     public File getExternalCacheDir() {
         return null;
     }
 
     @Override
     public File[] getExternalCacheDirs() {
+        return new File[0];
+    }
+
+    @Override
+    public File[] getExternalMediaDirs() {
         return new File[0];
     }
 
@@ -545,6 +707,11 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
     @Override
     public SQLiteDatabase openOrCreateDatabase(String name, int mode, SQLiteDatabase.CursorFactory factory, DatabaseErrorHandler errorHandler) {
         return null;
+    }
+
+    @Override
+    public boolean moveDatabaseFrom(Context context, String s) {
+        return false;
     }
 
     @Override
@@ -697,8 +864,20 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
         return null;
     }
 
+    @Nullable
+    @Override
+    public Intent registerReceiver(@Nullable BroadcastReceiver broadcastReceiver, IntentFilter intentFilter, int i) {
+        return null;
+    }
+
     @Override
     public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, String broadcastPermission, Handler scheduler) {
+        return null;
+    }
+
+    @Nullable
+    @Override
+    public Intent registerReceiver(BroadcastReceiver broadcastReceiver, IntentFilter intentFilter, @Nullable String s, @Nullable Handler handler, int i) {
         return null;
     }
 
@@ -709,6 +888,12 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
 
     @Override
     public ComponentName startService(Intent service) {
+        return null;
+    }
+
+    @Nullable
+    @Override
+    public ComponentName startForegroundService(Intent intent) {
         return null;
     }
 
@@ -737,6 +922,12 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
         return null;
     }
 
+    @Nullable
+    @Override
+    public String getSystemServiceName(@NonNull Class<?> aClass) {
+        return null;
+    }
+
     @Override
     public int checkPermission(String permission, int pid, int uid) {
         return PackageManager.PERMISSION_DENIED;
@@ -750,6 +941,11 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
     @Override
     public int checkCallingOrSelfPermission(String permission) {
         return PackageManager.PERMISSION_DENIED;
+    }
+
+    @Override
+    public int checkSelfPermission(@NonNull String s) {
+        return PackageManager.PERMISSION_GRANTED;
     }
 
     @Override
@@ -778,23 +974,28 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
     }
 
     @Override
+    public void revokeUriPermission(String s, Uri uri, int i) {
+
+    }
+
+    @Override
     public int checkUriPermission(Uri uri, int pid, int uid, int modeFlags) {
-        return 0;
+        return PackageManager.PERMISSION_GRANTED;
     }
 
     @Override
     public int checkCallingUriPermission(Uri uri, int modeFlags) {
-        return 0;
+        return PackageManager.PERMISSION_GRANTED;
     }
 
     @Override
     public int checkCallingOrSelfUriPermission(Uri uri, int modeFlags) {
-        return 0;
+        return PackageManager.PERMISSION_GRANTED;
     }
 
     @Override
     public int checkUriPermission(Uri uri, String readPermission, String writePermission, int pid, int uid, int modeFlags) {
-        return 0;
+        return PackageManager.PERMISSION_GRANTED;
     }
 
     @Override
@@ -823,6 +1024,11 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
     }
 
     @Override
+    public Context createContextForSplit(String s) throws PackageManager.NameNotFoundException {
+        return null;
+    }
+
+    @Override
     public Context createConfigurationContext(Configuration overrideConfiguration) {
         return null;
     }
@@ -830,5 +1036,15 @@ public class FakeContextForRetrievingTopLevelResources extends Context {
     @Override
     public Context createDisplayContext(Display display) {
         return null;
+    }
+
+    @Override
+    public Context createDeviceProtectedStorageContext() {
+        return null;
+    }
+
+    @Override
+    public boolean isDeviceProtectedStorage() {
+        return false;
     }
 }
